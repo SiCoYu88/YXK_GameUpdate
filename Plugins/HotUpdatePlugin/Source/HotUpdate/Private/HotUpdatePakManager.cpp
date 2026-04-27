@@ -69,6 +69,85 @@ void FScopedPakRef::ReleaseRef()
 }
 
 // ============================================================
+// FAutoMountAssetHandle 实现
+// ============================================================
+
+FAutoMountAssetHandle::FAutoMountAssetHandle(
+	UHotUpdatePakManager* InPakManager,
+	const TArray<FString>& InMountedPakPaths,
+	UObject* InLoadedAsset,
+	const FString& InAssetPath)
+	: PakManager(InPakManager)
+	, MountedPakPaths(InMountedPakPaths)
+	, LoadedAsset(InLoadedAsset)
+	, AssetPath(InAssetPath)
+	, bIsValid(InPakManager != nullptr)
+{
+}
+
+FAutoMountAssetHandle::~FAutoMountAssetHandle()
+{
+	Release();
+}
+
+FAutoMountAssetHandle::FAutoMountAssetHandle(FAutoMountAssetHandle&& Other) noexcept
+	: PakManager(Other.PakManager)
+	, MountedPakPaths(MoveTemp(Other.MountedPakPaths))
+	, LoadedAsset(Other.LoadedAsset)
+	, AssetPath(MoveTemp(Other.AssetPath))
+	, bIsValid(Other.bIsValid)
+{
+	Other.PakManager.Reset();
+	Other.LoadedAsset.Reset();
+	Other.bIsValid = false;
+}
+
+FAutoMountAssetHandle& FAutoMountAssetHandle::operator=(FAutoMountAssetHandle&& Other) noexcept
+{
+	if (this != &Other)
+	{
+		// 释放当前持有的引用
+		Release();
+
+		PakManager = Other.PakManager;
+		MountedPakPaths = MoveTemp(Other.MountedPakPaths);
+		LoadedAsset = Other.LoadedAsset;
+		AssetPath = MoveTemp(Other.AssetPath);
+		bIsValid = Other.bIsValid;
+
+		Other.PakManager.Reset();
+		Other.LoadedAsset.Reset();
+		Other.bIsValid = false;
+	}
+	return *this;
+}
+
+void FAutoMountAssetHandle::Release()
+{
+	if (bIsValid && PakManager.IsValid())
+	{
+		for (const FString& PakPath : MountedPakPaths)
+		{
+			PakManager->RequestUnmount(PakPath);
+		}
+	}
+	MountedPakPaths.Empty();
+	LoadedAsset.Reset();
+	AssetPath.Empty();
+	bIsValid = false;
+}
+
+UObject* FAutoMountAssetHandle::GetAsset() const
+{
+	return LoadedAsset.Get();
+}
+
+bool FAutoMountAssetHandle::IsValid() const
+{
+	return bIsValid && PakManager.IsValid() && LoadedAsset.IsValid();
+}
+
+// ============================================================
 // UHotUpdatePakManager 实现
 // ============================================================
 

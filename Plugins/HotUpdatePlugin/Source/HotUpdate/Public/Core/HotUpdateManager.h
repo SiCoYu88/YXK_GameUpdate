@@ -5,12 +5,15 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Core/HotUpdateTypes.h"
+#include "Core/HotUpdatePakTypes.h"
 #include "HotUpdateManifest.h"
 #include "HotUpdateManager.generated.h"
 
 class UHotUpdateDownloaderBase;
 class UHotUpdatePakManager;
 class UHotUpdateVersionStorage;
+class UHotUpdateAssetPakMapping;
+class UHotUpdateAutoMountLoader;
 
 /**
  * 热更新管理器
@@ -116,6 +119,57 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "HotUpdate|Events")
 	FOnPaksAvailable OnPaksAvailable;
 
+	// ============================================================
+	// 自动挂载加载接口（按需 Mount Pak）
+	// ============================================================
+
+	/**
+	 * 异步加载资源（自动 Mount 依赖 Pak）
+	 *
+	 * 根据 Asset-Pak Manifest 自动发现并 Mount 所有依赖 Pak，
+	 * 加载完成后通过回调返回结果。
+	 * 使用 ReleaseAutoMountAsset 释放引用。
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HotUpdate|AutoMount")
+	void LoadAssetWithAutoMount(const FString& AssetPath, const FOnAutoMountLoadComplete& OnComplete);
+
+	/**
+	 * 同步加载资源（自动 Mount 依赖 Pak）
+	 * @return 加载的 UObject*，失败返回 nullptr
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HotUpdate|AutoMount")
+	UObject* SyncLoadAssetWithAutoMount(const FString& AssetPath);
+
+	/**
+	 * 释放自动挂载的资源引用（Unmount 关联 Pak）
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HotUpdate|AutoMount")
+	void ReleaseAutoMountAsset(const FString& AssetPath);
+
+	/**
+	 * 批量异步加载资源（自动 Mount 依赖 Pak）
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HotUpdate|AutoMount")
+	void BatchLoadAssetsWithAutoMount(const TArray<FString>& AssetPaths, const FOnAutoMountBatchComplete& OnComplete);
+
+	/**
+	 * 获取 Asset-Pak 映射查询对象（可直接查询 Asset→Pak 信息）
+	 */
+	UFUNCTION(BlueprintPure, Category = "HotUpdate|AutoMount")
+	UHotUpdateAssetPakMapping* GetAssetPakMapping() const { return AssetPakMapping; }
+
+	/**
+	 * 获取自动挂载加载器
+	 */
+	UFUNCTION(BlueprintPure, Category = "HotUpdate|AutoMount")
+	UHotUpdateAutoMountLoader* GetAutoMountLoader() const { return AutoMountLoader; }
+
+	/**
+	 * 检查自动挂载系统是否就绪（Manifest 已加载）
+	 */
+	UFUNCTION(BlueprintPure, Category = "HotUpdate|AutoMount")
+	bool IsAutoMountReady() const;
+
 protected:
 	/// 设置状态
 	void SetState(EHotUpdateState NewState);
@@ -184,6 +238,14 @@ private:
 	/// 版本存储管理器
 	UPROPERTY(Transient)
 	TObjectPtr<UHotUpdateVersionStorage> VersionStorage;
+
+	/// Asset-Pak 映射查询
+	UPROPERTY(Transient)
+	TObjectPtr<UHotUpdateAssetPakMapping> AssetPakMapping;
+
+	/// 自动挂载加载器
+	UPROPERTY(Transient)
+	TObjectPtr<UHotUpdateAutoMountLoader> AutoMountLoader;
 
 	/// HTTP 请求句柄
 	TSharedPtr<class IHttpRequest> VersionCheckRequest;

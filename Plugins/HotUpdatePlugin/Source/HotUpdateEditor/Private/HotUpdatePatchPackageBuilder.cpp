@@ -8,6 +8,8 @@
 #include "HotUpdateUtils.h"
 #include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateVersionManager.h"
+#include "HotUpdateAssetPakManifestGenerator.h"
+#include "HotUpdateAssetDependencyCollector.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -509,6 +511,37 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	}
 
 	Result.ManifestFilePath = ManifestPath;
+
+	// 7.5 生成 Asset-Pak Manifest 和依赖信息
+	{
+		FString PaksDir = FPaths::Combine(OutputDir, TEXT("Paks"));
+		FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
+
+		bool bManifestGenerated = FHotUpdateAssetPakManifestGenerator::Generate(
+			PaksDir, OutputDir, CurrentConfig.PatchVersion, PlatformStr);
+
+		if (bManifestGenerated)
+		{
+			UE_LOG(LogHotUpdateEditor, Log, TEXT("Patch Asset-Pak Manifest 生成成功"));
+
+			FString AssetPakManifestPath = FPaths::Combine(OutputDir, TEXT("asset_pak_manifest.json"));
+			bool bDepsGenerated = FHotUpdateAssetDependencyCollector::Collect(
+				AssetPakManifestPath, OutputDir, CurrentConfig.PatchVersion);
+
+			if (bDepsGenerated)
+			{
+				UE_LOG(LogHotUpdateEditor, Log, TEXT("Patch Asset 依赖信息生成成功"));
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Patch Asset 依赖信息生成失败，但不影响构建"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("Patch Asset-Pak Manifest 生成失败，跳过"));
+		}
+	}
 
 	// 8. 注册版本
 	UpdateProgress(TEXT("注册版本"), TEXT(""), 0, 0);

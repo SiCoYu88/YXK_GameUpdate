@@ -1,0 +1,13 @@
+/.codebuddy
+/.git
+/.github
+/.vs
+/.vscode
+/Content
+/DerivedDataCache
+/Intermediate
+/openspec
+/Saved
+/Plugins/HotUpdatePlugin/Intermediate
+/Plugins/TestPlugin/Content
+/Plugins/TestPlugin/Intermediate

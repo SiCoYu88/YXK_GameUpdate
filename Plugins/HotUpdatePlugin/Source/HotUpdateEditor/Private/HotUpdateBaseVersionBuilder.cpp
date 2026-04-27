@@ -9,6 +9,8 @@
 #include "HotUpdateUtils.h"
 #include "HotUpdateAssetFilter.h"
 #include "HotUpdateChunkManager.h"
+#include "HotUpdateAssetPakManifestGenerator.h"
+#include "HotUpdateAssetDependencyCollector.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
@@ -824,6 +826,39 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	if (!BuildManifestJson(VersionDir, ContainerInfos, VersionObject, ChunksArray))
 	{
 		return false;
+	}
+
+	// 3.5 生成 Asset-Pak Manifest 和依赖信息
+	{
+		FString HotUpdatePaksDir = FPaths::Combine(VersionDir, TEXT("Paks"));
+		FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
+
+		// 生成 asset_pak_manifest.json
+		bool bManifestGenerated = FHotUpdateAssetPakManifestGenerator::Generate(
+			HotUpdatePaksDir, VersionDir, CurrentConfig.VersionString, PlatformStr);
+
+		if (bManifestGenerated)
+		{
+			UE_LOG(LogHotUpdateEditor, Log, TEXT("Asset-Pak Manifest 生成成功"));
+
+			// 生成 asset_dependencies.json（依赖于 asset_pak_manifest.json）
+			FString AssetPakManifestPath = FPaths::Combine(VersionDir, TEXT("asset_pak_manifest.json"));
+			bool bDepsGenerated = FHotUpdateAssetDependencyCollector::Collect(
+				AssetPakManifestPath, VersionDir, CurrentConfig.VersionString);
+
+			if (bDepsGenerated)
+			{
+				UE_LOG(LogHotUpdateEditor, Log, TEXT("Asset 依赖信息生成成功"));
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Asset 依赖信息生成失败，但不影响构建"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("Asset-Pak Manifest 生成失败（可能没有 Pak 文件），跳过依赖信息生成"));
+		}
 	}
 
 	// 4. 使用缓存数据解析资源磁盘路径（避免重复收集）

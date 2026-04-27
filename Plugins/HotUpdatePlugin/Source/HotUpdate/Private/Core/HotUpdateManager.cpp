@@ -11,6 +11,8 @@
 #include "Serialization/JsonSerializer.h"
 #include "HotUpdatePakManager.h"
 #include "HotUpdateManifest.h"
+#include "HotUpdateAssetPakMapping.h"
+#include "HotUpdateAutoMountLoader.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
@@ -60,6 +62,12 @@ void UHotUpdateManager::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		PakManager->Initialize(Settings->GetLocalPakFullPath());
 	}
+
+	// 创建 Asset-Pak 映射查询
+	AssetPakMapping = NewObject<UHotUpdateAssetPakMapping>(this);
+
+	// 创建自动挂载加载器
+	AutoMountLoader = NewObject<UHotUpdateAutoMountLoader>(this);
 
 	// 启动时清理旧版本（如果配置启用）
 	if (Settings->bAutoCleanupOldVersions)
@@ -462,6 +470,26 @@ bool UHotUpdateManager::ApplyUpdate()
 				VersionStorage->SaveLocalManifest(CachedServerManifest);
 			}
 
+			// 加载 Asset-Pak Manifest 并初始化 AutoMountLoader
+			if (AssetPakMapping && AutoMountLoader && PakManager)
+			{
+				FString ManifestDir = Settings->GetLocalPakFullPath() / LatestVersion.ToString();
+
+				bool bManifestLoaded = AssetPakMapping->LoadManifest(ManifestDir);
+				if (bManifestLoaded)
+				{
+					AssetPakMapping->LoadDependencies(ManifestDir);
+					AutoMountLoader->Initialize(PakManager, AssetPakMapping);
+
+					UE_LOG(LogHotUpdate, Log, TEXT("AutoMount system ready: %d assets, %d paks"),
+						AssetPakMapping->GetAssetCount(), AssetPakMapping->GetPakCount());
+				}
+				else
+				{
+					UE_LOG(LogHotUpdate, Log, TEXT("Asset-Pak Manifest not found, AutoMount disabled (manual mount only)"));
+				}
+			}
+
 			// 清理旧版本
 			CleanupOldVersions();
 
@@ -690,6 +718,64 @@ void UHotUpdateManager::HandleDownloadComplete(bool bSuccess, const FString& Err
 	}
 
 	OnDownloadComplete.Broadcast(bSuccess);
+}
+
+// ============================================================
+// AutoMount 便捷接口实现
+// ============================================================
+
+void UHotUpdateManager::LoadAssetWithAutoMount(const FString& AssetPath, const FOnAutoMountLoadComplete& OnComplete)
+{
+	if (!AutoMountLoader || !AutoMountLoader->IsInitialized())
+	{
+		UE_LOG(LogHotUpdate, Warning, TEXT("AutoMount not ready, cannot load: %s"), *AssetPath);
+		OnComplete.ExecuteIfBound(false, nullptr);
+		return;
+	}
+
+	AutoMountLoader->AsyncLoadAsset(AssetPath, OnComplete);
+}
+
+UObject* UHotUpdateManager::SyncLoadAssetWithAutoMount(const FString& AssetPath)
+{
+	if (!AutoMountLoader || !AutoMountLoader->IsInitialized())
+	{
+		UE_LOG(LogHotUpdate, Warning, TEXT("AutoMount not ready, cannot sync load: %s"), *AssetPath);
+		return nullptr;
+	}
+
+	return AutoMountLoader->SyncLoadAsset(AssetPath);
+}
+
+void UHotUpdateManager::ReleaseAutoMountAsset(const FString& AssetPath)
+{
+	if (!AutoMountLoader)
+	{
+		UE_LOG(LogHotUpdate, Warning, TEXT("AutoMountLoader is null, cannot release: %s"), *AssetPath);
+		return;
+	}
+
+	AutoMountLoader->ReleaseAsset(AssetPath);
+}
+
+void UHotUpdateManager::BatchLoadAssetsWithAutoMount(const TArray<FString>& AssetPaths, const FOnAutoMountBatchComplete& OnComplete)
+{
+	if (!AutoMountLoader || !AutoMountLoader->IsInitialized())
+	{
+		UE_LOG(LogHotUpdate, Warning, TEXT("AutoMount not ready, cannot batch load %d assets"), AssetPaths.Num());
+		OnComplete.ExecuteIfBound(false, TArray<UObject*>());
+		return;
+	}
+
+	AutoMountLoader->AsyncLoadAssets(AssetPaths, OnComplete);
+}
+
+bool UHotUpdateManager::IsAutoMountReady() const
+{
+	return AssetPakMapping
+		&& AssetPakMapping->IsManifestLoaded()
+		&& AutoMountLoader
+		&& AutoMountLoader->IsInitialized();
 }
 
 void UHotUpdateManager::CalculateIncrementalDownload(
