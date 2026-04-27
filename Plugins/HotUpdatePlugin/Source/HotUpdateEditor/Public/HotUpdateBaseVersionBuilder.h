@@ -4,71 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
+#include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateBaseVersionBuilder.generated.h"
 
 class IAssetRegistry;
 
-/**
- * 基础版本构建进度
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildProgress
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	FString CurrentStage;
-
-	UPROPERTY(BlueprintReadOnly)
-	float ProgressPercent;
-
-	UPROPERTY(BlueprintReadOnly)
-	FString StatusMessage;
-
-	FHotUpdateBaseVersionBuildProgress()
-		: ProgressPercent(0.0f)
-	{
-	}
-};
-
-/**
- * 基础版本构建结果
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildResult
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	bool bSuccess;
-
-	UPROPERTY(BlueprintReadOnly)
-	FString VersionString;
-
-	UPROPERTY(BlueprintReadOnly)
-	EHotUpdatePlatform Platform;
-
-	/// 可执行文件路径 (exe/apk)
-	UPROPERTY(BlueprintReadOnly)
-	FString ExecutablePath;
-
-	/// 输出目录
-	UPROPERTY(BlueprintReadOnly)
-	FString OutputDirectory;
-
-	/// 资源Hash清单路径
-	UPROPERTY(BlueprintReadOnly)
-	FString ResourceHashPath;
-
-	/// 错误信息
-	UPROPERTY(BlueprintReadOnly)
-	FString ErrorMessage;
-
-	FHotUpdateBaseVersionBuildResult()
-		: bSuccess(false), Platform(EHotUpdatePlatform::Windows)
-	{
-	}
-};
 
 // 构建进度委托 (使用多播委托以支持 Slate 控件绑定)
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildProgressDelegate, const FHotUpdateBaseVersionBuildProgress&);
@@ -106,15 +46,11 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EHotUpdateAndroidTextureFormat AndroidTextureFormat;
 
-	/// 是否打包所有资源（true）还是只打包项目资源（false）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool bPackageAll;
-
 	/// 是否跳过编译步骤（如果项目已编译，可以跳过以避免 Live Coding 冲突）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bSkipBuild;
 
-	/// 同步执行模式（用于命令行工具，避免游戏线程阻塞问题）
+	/// 同步执行模式
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bSynchronousMode;
 
@@ -125,12 +61,14 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	/// 预收集的热更资产列表（ApplyMinimalPackageFilter 输出，由游戏线程填充）
 	TArray<FString> PreCollectedPatchAssetPaths;
 
+	/// 预收集的 Staged 文件列表（非 UE 资产）
+	TArray<FString> PreCollectedNonAssetFiles;
+
 	FHotUpdateBaseVersionBuildConfig()
 		: Platform(EHotUpdatePlatform::Windows)
 		, BuildConfiguration(EHotUpdateBuildConfiguration::Development)
 		, AndroidPackageName(TEXT("com.dragonli.czm"))
 		, AndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)
-		, bPackageAll(true)
 		, bSkipBuild(false)
 		, bSynchronousMode(false)
 	{
@@ -143,32 +81,27 @@ struct FHotUpdateResolvedAssetInfo;
 /**
  * 基础版本构建器
  * 负责完整的项目打包（exe/apk）并保存为基础版本
+ * 继承 TSharedFromThis 以支持异步任务中的弱引用安全访问
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdateBaseVersionBuilder : public UObject
+class HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuilder : public TSharedFromThis<FHotUpdateBaseVersionBuilder>
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdateBaseVersionBuilder();
+	FHotUpdateBaseVersionBuilder();
 
 	/**
 	 * 开始构建基础版本
 	 * @param Config 构建配置
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|BaseVersion")
 	void BuildBaseVersion(const FHotUpdateBaseVersionBuildConfig& Config);
 
 	/**
 	 * 取消构建
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|BaseVersion")
 	void CancelBuild();
 
 	/**
 	 * 是否正在构建
 	 */
-	UFUNCTION(BlueprintPure, Category = "Hot Update|BaseVersion")
 	bool IsBuilding() const { return bIsBuilding; }
 
 	/**
@@ -184,9 +117,9 @@ public:
 
 private:
 	/**
-	 * 执行构建（内部实现，支持同步/异步模式）
+	 * 执行构建
 	 */
-	void ExecuteBuildInternal(bool bSynchronous);
+	void ExecuteBuildInternal();
 
 	/**
 	 * 写入最小包配置到临时文件，供 UAT 打包时读取
@@ -196,7 +129,7 @@ private:
 	/**
 	 * 执行 UAT 打包命令
 	 */
-	bool ExecuteUATPackage(const FString& UATCommand, FString& OutError);
+	bool ExecuteUATPackage(const FString& UATCommand, FString& OutError) const;
 
 	/**
 	 * 生成 UAT 命令行
@@ -215,12 +148,22 @@ private:
 	FString ResolvePlatformOutputDir() const;
 
 	/**
-	 * 收集 IoStore 容器文件信息（.utoc/.ucas）
+	 * 收集指定目录下的 IoStore/Pak 容器文件信息
+	 * @param SearchDir 搜索目录
+	 * @param BaseDir 基准目录（用于计算相对路径）
+	 * @param ContainerType 容器类型（Base/Patch）
+	 * @param OutContainerInfos 输出容器信息数组
 	 */
-	TArray<FHotUpdateContainerInfo> CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir) const;
+	static void CollectContainerFiles(
+		const FString& SearchDir,
+		const FString& BaseDir,
+		EHotUpdateContainerType ContainerType,
+		TArray<FHotUpdateContainerInfo>& OutContainerInfos);
 
 	/**
 	 * 生成并保存 manifest.json
+	 * @param VersionDir
+	 * @param ContainerInfos
 	 * @param OutVersionObject 共享的版本信息 JSON 对象（供 filemanifest.json 复用）
 	 * @param OutChunksArray 共享的 chunks 数组（供 filemanifest.json 复用）
 	 */
@@ -236,26 +179,26 @@ private:
 	void PreComputeChunkMapping();
 
 	/**
-	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetAssetDiskPath 调用）
+	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetCookedAssetPath 调用）
 	 */
-	TArray<FHotUpdateResolvedAssetInfo> ResolveAssetInfo(
+	static TArray<FHotUpdateResolvedAssetInfo> ResolveAssetInfo(
 		const TArray<FString>& AssetPaths,
-		const FString& CookedPlatformDir) const;
+		const FString& CookedPlatformDir);
 
 	/**
 	 * 生成并保存 filemanifest.json（去重基础/热更资源的文件条目生成）
 	 */
-	bool BuildFileManifestJson(
+	static bool BuildFileManifestJson(
 		const FString& VersionDir,
 		const TSharedPtr<FJsonObject>& VersionObject,
 		const TArray<TSharedPtr<FJsonValue>>& ChunksArray,
 		const TArray<FHotUpdateResolvedAssetInfo>& BaseAssets,
-		const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets) const;
+		const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets);
 
 	/**
 	 * 检查打包输出是否存在
 	 */
-	bool CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath);
+	bool CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath) const;
 
 	/**
 	 * 更新进度

@@ -28,14 +28,16 @@ public:
 
 #if WITH_EDITOR
 	//~UAssetManager interface
-	/**
-	 * Override chunk assignment function.
-	 * Only overrides Chunk 0 assignment for whitelist packages and their dependencies.
-	 * Non-whitelist packages keep the engine's default chunk assignment.
-	 */
 	virtual bool GetPackageChunkIds(FName PackageName, const ITargetPlatform* TargetPlatform,
 		TArrayView<const int32> ExistingChunkList, TArray<int32>& OutChunkList,
 		TArray<int32>* OutOverrideChunkList = nullptr) const override;
+
+	virtual TMap<int32, FAssetManagerChunkInfo> BuildChunkMap(const TSet<FName>& PackagesToUpdateChunksFor, const TSet<FName>& StartupPackages, const TSet<FName>& PackageThatWereCooked) const override;
+
 	//~End of UAssetManager interface
+
+	// 最小包配置（BuildChunkMap 加载，GetPackageChunkIds 使用）
+	mutable bool bMinimalPackageEnabled = false;
+	mutable TMap<FString, int32> ChunkMapping;
 #endif
 };

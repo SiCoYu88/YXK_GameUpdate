@@ -1,7 +1,6 @@
 // Copyright czm. All Rights Reserved.
 
 #include "Widgets/HotUpdateCustomPackagingPanel.h"
-#include "HotUpdateEditor.h"
 #include "HotUpdateEditorSettings.h"
 #include "HotUpdateEditorStyle.h"
 #include "HotUpdateNotificationHelper.h"
@@ -47,8 +46,7 @@ void SHotUpdateCustomPackagingPanel::Construct(const FArguments& InArgs)
 	SelectedAndroidTextureFormat = AndroidTextureFormatOptions[0];
 
 	// 创建更新包构建器
-	CustomPackageBuilder = NewObject<UHotUpdateCustomPackageBuilder>();
-	CustomPackageBuilder->AddToRoot();
+	CustomPackageBuilder = MakeShareable(new FHotUpdateCustomPackageBuilder());
 	CustomPackageBuilder->OnProgress.AddSP(this, &SHotUpdateCustomPackagingPanel::OnPackagingProgress);
 	CustomPackageBuilder->OnComplete.AddSP(this, &SHotUpdateCustomPackagingPanel::OnPackagingComplete);
 
@@ -74,12 +72,11 @@ void SHotUpdateCustomPackagingPanel::Construct(const FArguments& InArgs)
 
 SHotUpdateCustomPackagingPanel::~SHotUpdateCustomPackagingPanel()
 {
-	if (CustomPackageBuilder)
+	if (CustomPackageBuilder.IsValid())
 	{
 		CustomPackageBuilder->OnProgress.RemoveAll(this);
 		CustomPackageBuilder->OnComplete.RemoveAll(this);
-		CustomPackageBuilder->RemoveFromRoot();
-		CustomPackageBuilder = nullptr;
+		CustomPackageBuilder.Reset();
 	}
 }
 
@@ -744,6 +741,7 @@ FReply SHotUpdateCustomPackagingPanel::OnPackageClicked()
 	CustomConfig.IoStoreConfig.bEncryptIndex = EditorSettings->bDefaultEncryptIndex;
 	CustomConfig.IoStoreConfig.bEncryptContent = EditorSettings->bDefaultEncryptContent;
 	CustomConfig.IoStoreConfig.bUseIoStore = (PackageConfig.OutputFormat == EHotUpdateOutputFormat::IoStore);
+	CustomConfig.bSynchronousMode = false;
 
 	CustomPackageBuilder->BuildCustomPackageAsync(CustomConfig);
 

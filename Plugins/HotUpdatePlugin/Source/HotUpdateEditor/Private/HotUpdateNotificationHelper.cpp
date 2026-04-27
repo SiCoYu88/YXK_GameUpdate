@@ -62,7 +62,7 @@ void FHotUpdateNotificationHelper::ShowErrorNotification(const FText& Message)
     }
 }
 
-TSharedPtr<SNotificationItem> FHotUpdateNotificationHelper::ShowProgressNotification(const FText& Message, FSimpleDelegate CancelDelegate)
+TSharedPtr<SNotificationItem> FHotUpdateNotificationHelper::ShowProgressNotification(const FText& Message, const FSimpleDelegate& CancelDelegate)
 {
     FNotificationInfo Info(Message);
     Info.bFireAndForget = false;

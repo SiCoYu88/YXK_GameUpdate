@@ -4,99 +4,59 @@
 
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
-#include "HotUpdateIoStoreBuilder.h"
-#include "HotUpdateChunkManager.h"
-#include "HotUpdateVersionManager.h"
-#include "HotUpdatePackageHelper.h"
 #include "HAL/CriticalSection.h"
 #include <atomic>
-#include "HotUpdatePatchPackageBuilder.generated.h"
 
 /**
  * 热更新打包构建器
  * 基于基础包生成差异更新包
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdatePatchPackageBuilder : public UObject
+class HOTUPDATEEDITOR_API FHotUpdatePatchPackageBuilder : public TSharedFromThis<FHotUpdatePatchPackageBuilder>
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdatePatchPackageBuilder();
+	FHotUpdatePatchPackageBuilder();
 
 	/** 构建更新包 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	FHotUpdatePatchPackageResult BuildPatchPackage(const FHotUpdatePatchPackageConfig& Config);
 
 	/** 异步构建更新包 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	void BuildPatchPackageAsync(const FHotUpdatePatchPackageConfig& Config);
-
-	/** 预览差异 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
-	FHotUpdateDiffReport PreviewDiff(const FHotUpdatePatchPackageConfig& Config);
-
+	
 	/** 取消构建 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	void CancelBuild();
 
 	/** 是否正在构建 */
-	UFUNCTION(BlueprintPure, Category = "Hot Update|PatchPackage")
 	bool IsBuilding() const { return bIsBuilding; }
-
-	/** 获取当前进度 */
-	UFUNCTION(BlueprintPure, Category = "Hot Update|PatchPackage")
-	FHotUpdatePackageProgress GetCurrentProgress() const;
-
+	
 	/** 验证配置 */
-	bool ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage);
-
+	static bool ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage);
+	
 	// 进度委托
 	FOnPackageProgressDelegate OnProgress;
 
 	// 完成委托
 	FOnPatchPackageCompleteDelegate OnComplete;
 
-	/** 委托给 Helper */
-	static FString ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir)
-	{ return FHotUpdatePackageHelper::ConvertAssetPathToFileName(AssetPath, CookedPlatformDir); }
-
-	/** 委托给 Helper */
-	static FString FileNameToAssetPath(const FString& FileName)
-	{ return FHotUpdatePackageHelper::FileNameToAssetPath(FileName); }
-
 private:
 	/** 收集资源 */
-	bool CollectAssets(
-		TArray<FString>& OutAssetPaths,
-		TMap<FString, FString>& OutAssetDiskPaths,
-		TMap<FString, FString>& OutAssetSourcePaths,
-		FString& OutErrorMessage);
+	bool CollectAssets(FString& OutErrorMessage);
 
-	/** 加载基础版本 Manifest */
-	bool LoadBaseManifest(
+	/** 加载基础版本 FileManifest */
+	static bool LoadBaseFileManifest(
 		const FString& ManifestPath,
 		TMap<FString, FString>& OutAssetHashes,
 		TMap<FString, int64>& OutAssetSizes);
 
 	/** 计算差异 */
-	bool ComputeDiff(
+	static bool ComputeDiff(
 		const TArray<FString>& CurrentAssets,
 		const TMap<FString, FString>& CurrentHashes,
 		const TMap<FString, FString>& BaseHashes,
 		TArray<FString>& OutChangedAssets,
 		FHotUpdateDiffReport& OutReport);
 
-	/** 加载之前的 Patch Manifest（链式 Patch） */
-	bool LoadPreviousPatchManifest(
-		const FString& ManifestPath,
-		TArray<FHotUpdateContainerInfo>& OutContainers,
-		TMap<FString, FString>& OutPatchFilesHash,
-		TMap<FString, int64>& OutPatchFilesSize,
-		FString& OutPatchVersion);
-
 	/** 加载基础版本容器信息（全量热更新） */
-	bool LoadBaseContainers(
+	static bool LoadBaseContainers(
 		const FString& ContainerDirectory,
 		TArray<FHotUpdateContainerInfo>& OutContainers,
 		TMap<FString, FString>& OutFilesHash,
@@ -112,13 +72,9 @@ private:
 		const TMap<FString, FString>& BaseAssetHashes,
 		const TMap<FString, int64>& BaseAssetSizes,
 		const FHotUpdateDiffReport& DiffReport,
-		const TArray<FHotUpdateContainerInfo>& ChainPatchContainers = TArray<FHotUpdateContainerInfo>(),
-		const TMap<FString, FString>& PreviousPatchFilesHash = TMap<FString, FString>(),
-		const TMap<FString, int64>& PreviousPatchFilesSize = TMap<FString, int64>(),
-		const TArray<FString>& PatchVersionChain = TArray<FString>(),
 		const TArray<FHotUpdateContainerInfo>& BaseContainers = TArray<FHotUpdateContainerInfo>(),
 		const TMap<FString, FString>& BaseContainerFilesHash = TMap<FString, FString>(),
-		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>());
+		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>()) const;
 
 	/** 更新进度 */
 	void UpdateProgress(

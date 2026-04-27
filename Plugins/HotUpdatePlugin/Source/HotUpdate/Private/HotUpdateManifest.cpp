@@ -94,9 +94,6 @@ bool UHotUpdateManifestParser::ParseFromJson(const FString& JsonString, FHotUpda
 				}
 			}
 
-			// 解析 ChunkId
-			ContainerObject->TryGetNumberField(TEXT("chunkId"), Container.ChunkId);
-
 			ContainerObject->TryGetStringField(TEXT("version"), Container.Version);
 			OutManifest.Containers.Add(Container);
 		}
@@ -181,8 +178,6 @@ FString UHotUpdateManifestParser::ToJsonString(const FHotUpdateManifest& Manifes
 		ContainerObject->SetStringField(TEXT("containerType"),
 			Container.ContainerType == EHotUpdateContainerType::Base ? TEXT("base") : TEXT("patch"));
 
-		// Chunk ID
-		ContainerObject->SetNumberField(TEXT("chunkId"), Container.ChunkId);
 		ContainerObject->SetStringField(TEXT("version"), Container.Version);
 
 		ContainersArray.Add(MakeShareable(new FJsonValueObject(ContainerObject)));

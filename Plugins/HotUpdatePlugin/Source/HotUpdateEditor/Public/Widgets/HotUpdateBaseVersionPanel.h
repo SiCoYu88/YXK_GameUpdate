@@ -13,6 +13,8 @@
 
 class SProgressBar;
 
+class FHotUpdateBaseVersionBuilder;
+
 /**
  * 基础版本构建面板
  */
@@ -92,7 +94,7 @@ private:
 	TSharedPtr<SWindow> ParentWindow;
 
 	/** 构建器 */
-	TObjectPtr<UHotUpdateBaseVersionBuilder> Builder;
+	TSharedPtr<FHotUpdateBaseVersionBuilder> Builder;
 
 	/** 构建配置 */
 	FHotUpdateBaseVersionBuildConfig BuildConfig;

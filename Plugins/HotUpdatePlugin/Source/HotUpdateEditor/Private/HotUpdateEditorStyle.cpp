@@ -4,7 +4,6 @@
 #include "Styling/SlateStyleRegistry.h"
 #include "EditorStyleSet.h"
 #include "Styling/CoreStyle.h"
-#include "Styling/AppStyle.h"
 
 // ===== 颜色常量定义 =====
 

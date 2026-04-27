@@ -8,7 +8,6 @@
 #include "HotUpdatePatchPackageBuilder.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
-#include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
 
@@ -17,6 +16,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogHotUpdateCommandlet, Log, All);
 UHotUpdateCommandlet::UHotUpdateCommandlet(): bShowHelp(false), bIsShipping(false), bSkipBuild(false),
                                               bEnableMinimalPackage(false),
                                               PatchChunkStrategy(EHotUpdateChunkStrategy::None),
+                                              PatchChunkSizeMB(256),
                                               bIncludeBaseContainers(false),
                                               bSkipCook(false),
                                               bIncrementalCook(false)
@@ -75,7 +75,7 @@ int32 UHotUpdateCommandlet::Main(const FString& Params)
 
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("AssetRegistry 加载完成"));
 
-	int32 Result = 0;
+	int32 Result;
 
 	if (Mode == TEXT("base"))
 	{
@@ -128,8 +128,7 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 	FString ChunkStrategyStr;
 	if (FParse::Value(*Params, TEXT("chunkstrategy="), ChunkStrategyStr))
 	{
-		UEnum* ChunkStrategyEnum = StaticEnum<EHotUpdateChunkStrategy>();
-		if (ChunkStrategyEnum)
+		if (UEnum* ChunkStrategyEnum = StaticEnum<EHotUpdateChunkStrategy>())
 		{
 			int64 EnumValue = ChunkStrategyEnum->GetValueByNameString(ChunkStrategyStr);
 			if (EnumValue >= 0)
@@ -141,6 +140,13 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 				UE_LOG(LogHotUpdateCommandlet, Warning, TEXT("未知的分包策略: %s，使用默认值 None"), *ChunkStrategyStr);
 			}
 		}
+	}
+
+	// 解析分包大小参数（MB）
+	FParse::Value(*Params, TEXT("chunksize="), PatchChunkSizeMB);
+	if (PatchChunkSizeMB < 1)
+	{
+		PatchChunkSizeMB = 256;
 	}
 
 	// 解析全量热更新参数
@@ -170,6 +176,7 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  EnableMinimalPackage: %s"), bEnableMinimalPackage ? TEXT("true") : TEXT("false"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  WhitelistDirectories: %s"), *WhitelistDirectories);
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  PatchChunkStrategy: %s"), *UEnum::GetValueAsString(PatchChunkStrategy));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  PatchChunkSizeMB: %d"), PatchChunkSizeMB);
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  IncludeBaseContainers: %s"), bIncludeBaseContainers ? TEXT("true") : TEXT("false"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  BaseContainerDir: %s"), *BaseContainerDir);
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  TextureFormat: %s"), *TextureFormatStr);
@@ -203,7 +210,9 @@ void UHotUpdateCommandlet::ShowHelp()
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -basecontainerdir     基础版本容器目录路径（全量热更新模式需要）"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -textureformat        Android 纹理格式: ETC2, ASTC, DXT, Multi (base 模式, 默认 ETC2)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -skipcook             跳过 Cook 步骤 (patch 模式，默认会先 Cook)"));
-		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -incrementalcook      启用增量 Cook，只 Cook 有变更的资源 (patch 模式)"));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -incrementalcook      启用增量 Cook，只 Cook 有变更的资源 (patch 模式)"));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -chunkstrategy        分包策略: None(不分包), Size(按大小分包)"));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -chunksize            分包大小，单位MB (默认256，配合 -chunkstrategy=Size 使用)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -help                 显示帮助信息"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT(""));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("示例:"));
@@ -228,7 +237,7 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	Config.Platform = ParsePlatform(PlatformStr);
 	Config.BuildConfiguration = bIsShipping ? EHotUpdateBuildConfiguration::Shipping : EHotUpdateBuildConfiguration::Development;
 	Config.bSkipBuild = bSkipBuild;
-	Config.bSynchronousMode = true;  // 命令行模式使用同步执行
+	Config.bSynchronousMode = true;
 
 	// 配置 Android 纹理格式
 	if (!TextureFormatStr.IsEmpty() && Config.Platform == EHotUpdatePlatform::Android)
@@ -245,7 +254,7 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	else
 	{
 		// 默认输出目录
-		Config.OutputDirectory = UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
+		Config.OutputDirectory = FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
 	}
 
 	// 配置最小包模式
@@ -253,6 +262,8 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	{
 		Config.MinimalPackageConfig.bEnableMinimalPackage = true;
 		Config.MinimalPackageConfig.PatchChunkStrategy = PatchChunkStrategy;
+		Config.MinimalPackageConfig.PatchChunkConfig.ChunkStrategy = PatchChunkStrategy;
+		Config.MinimalPackageConfig.PatchChunkConfig.SizeBasedConfig.MaxChunkSizeMB = PatchChunkSizeMB;
 
 		// 解析必须包含的目录
 		if (!WhitelistDirectories.IsEmpty())
@@ -276,11 +287,11 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("启用最小包模式"));
 	}
 
-	// 创建构建器
-	UHotUpdateBaseVersionBuilder* Builder = NewObject<UHotUpdateBaseVersionBuilder>();
+	// 创建构建器（栈对象，同步模式下生命周期由函数作用域管理）
+	FHotUpdateBaseVersionBuilder Builder;
 
 	// 绑定进度回调
-	Builder->OnBuildProgress.AddLambda([](const FHotUpdateBaseVersionBuildProgress& Progress)
+	Builder.OnBuildProgress.AddLambda([](const FHotUpdateBaseVersionBuildProgress& Progress)
 	{
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("[%s] %.0f%% - %s"),
 			*Progress.CurrentStage, Progress.ProgressPercent * 100, *Progress.StatusMessage);
@@ -288,7 +299,7 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 
 	// 捕获构建结果
 	bool bBuildSuccess = false;
-	Builder->OnBuildComplete.AddLambda([&bBuildSuccess](const FHotUpdateBaseVersionBuildResult& Result)
+	Builder.OnBuildComplete.AddLambda([&bBuildSuccess](const FHotUpdateBaseVersionBuildResult& Result)
 	{
 		bBuildSuccess = Result.bSuccess;
 		if (Result.bSuccess)
@@ -307,10 +318,10 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	});
 
 	// 开始构建
-	Builder->BuildBaseVersion(Config);
+	Builder.BuildBaseVersion(Config);
 
 	// 等待构建完成
-	while (Builder->IsBuilding())
+	while (Builder.IsBuilding())
 	{
 		FPlatformProcess::Sleep(0.5f);
 	}
@@ -334,25 +345,25 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 
 	if (ManifestPath.IsEmpty())
 	{
-		// 优先从 HotUpdateVersions 目录查找
-		FString VersionDir = UHotUpdateVersionManager::GetVersionDir(BaseVersion, ParsePlatform(PlatformStr), ParseTextureFormat(TextureFormatStr));
-		ManifestPath = FPaths::Combine(VersionDir, TEXT("manifest.json"));
+		// 优先从 HotUpdateVersions 目录查找 filemanifest.json
+		FString VersionDir = FHotUpdateVersionManager::GetVersionDir(BaseVersion, ParsePlatform(PlatformStr), ParseTextureFormat(TextureFormatStr));
+		ManifestPath = FPaths::Combine(VersionDir, TEXT("filemanifest.json"));
 
 		if (!FPaths::FileExists(*ManifestPath))
 		{
 			// 回退到 BaseVersionBuilds 目录查找
-			FString BaseVersionDir = FPaths::Combine(UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion);
-			ManifestPath = FPaths::Combine(BaseVersionDir, PlatformName, TEXT("manifest.json"));
+			FString BaseVersionDir = FPaths::Combine(FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion);
+			ManifestPath = FPaths::Combine(BaseVersionDir, PlatformName, TEXT("filemanifest.json"));
 		}
 
 		if (!FPaths::FileExists(*ManifestPath))
 		{
-			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("未找到基础版本 Manifest"));
-			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("请使用 -manifest 参数指定 Manifest 路径"));
+			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("未找到基础版本 filemanifest.json"));
+			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("请使用 -manifest 参数指定 filemanifest.json 路径"));
 			return 1;
 		}
 
-		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("自动找到 Manifest: %s"), *ManifestPath);
+		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("自动找到 filemanifest: %s"), *ManifestPath);
 	}
 
 	// 构建配置
@@ -360,10 +371,11 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 	Config.PatchVersion = Version;
 	Config.BaseVersion = BaseVersion;
 	Config.Platform = ParsePlatform(PlatformStr);
-	Config.BaseManifestPath.FilePath = ManifestPath;
+	Config.BaseFileManifestPath.FilePath = ManifestPath;
 	Config.bSkipCook = bSkipCook;
 	Config.bIncrementalCook = bIncrementalCook;
 	Config.bSkipBuild = bSkipBuild;
+	Config.bSynchronousMode = true;
 
 	// 配置输出目录
 	if (!OutputDir.IsEmpty())
@@ -372,7 +384,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 	}
 	else
 	{
-		Config.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdatePatches");
+		Config.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
 	}
 
 	// 配置全量热更新模式
@@ -383,7 +395,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		// 如果未指定基础容器目录，尝试自动查找
 		if (BaseContainerDir.IsEmpty())
 		{
-			FString BaseVersionBuildDir = FPaths::Combine(UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion, PlatformName);
+			FString BaseVersionBuildDir = FPaths::Combine(FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion, PlatformName);
 			if (FPaths::DirectoryExists(*BaseVersionBuildDir))
 			{
 				BaseContainerDir = BaseVersionBuildDir;
@@ -398,12 +410,12 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		}
 	}
 
-	// 创建构建器
-	UHotUpdatePatchPackageBuilder* Builder = NewObject<UHotUpdatePatchPackageBuilder>();
+	// 创建构建器（栈对象）
+	FHotUpdatePatchPackageBuilder Builder;
 
 	// 验证配置
 	FString ErrorMessage;
-	if (!Builder->ValidateConfig(Config, ErrorMessage))
+	if (!Builder.ValidateConfig(Config, ErrorMessage))
 	{
 		UE_LOG(LogHotUpdateCommandlet, Error, TEXT("配置验证失败: %s"), *ErrorMessage);
 		return 1;
@@ -411,7 +423,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 
 	// 执行构建
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("开始构建热更包..."));
-	FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(Config);
+	FHotUpdatePatchPackageResult Result = Builder.BuildPatchPackage(Config);
 
 	if (Result.bSuccess)
 	{

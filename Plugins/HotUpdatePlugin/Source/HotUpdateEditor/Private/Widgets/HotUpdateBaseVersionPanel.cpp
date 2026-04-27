@@ -1,7 +1,6 @@
 // Copyright czm. All Rights Reserved.
 
 #include "Widgets/HotUpdateBaseVersionPanel.h"
-#include "HotUpdateEditor.h"
 #include "HotUpdateEditorStyle.h"
 #include "HotUpdateNotificationHelper.h"
 #include "HotUpdateBaseVersionBuilder.h"
@@ -21,7 +20,6 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Misc/Paths.h"
-#include "Async/Async.h"
 
 #define LOCTEXT_NAMESPACE "HotUpdateBaseVersionPanel"
 
@@ -62,13 +60,12 @@ void SHotUpdateBaseVersionPanel::Construct(const FArguments& InArgs)
 	SelectedPatchChunkStrategy = PatchChunkStrategyOptions[0];
 
 	// 创建构建器
-	Builder = NewObject<UHotUpdateBaseVersionBuilder>();
-	Builder->AddToRoot();
+	Builder = MakeShareable(new FHotUpdateBaseVersionBuilder());
 	Builder->OnBuildProgress.AddSP(this, &SHotUpdateBaseVersionPanel::OnBuildProgress);
 	Builder->OnBuildComplete.AddSP(this, &SHotUpdateBaseVersionPanel::OnBuildComplete);
 
 	// 默认输出目录
-	BuildConfig.OutputDirectory = UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
+	BuildConfig.OutputDirectory = FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
 
 	ChildSlot
 	[
@@ -139,12 +136,11 @@ void SHotUpdateBaseVersionPanel::Construct(const FArguments& InArgs)
 
 SHotUpdateBaseVersionPanel::~SHotUpdateBaseVersionPanel()
 {
-	if (Builder)
+	if (Builder.IsValid())
 	{
 		Builder->OnBuildProgress.RemoveAll(this);
 		Builder->OnBuildComplete.RemoveAll(this);
-		Builder->RemoveFromRoot();
-		Builder = nullptr;
+		Builder.Reset();
 	}
 }
 

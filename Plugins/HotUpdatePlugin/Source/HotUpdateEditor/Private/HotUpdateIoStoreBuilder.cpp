@@ -2,29 +2,29 @@
 
 #include "HotUpdateIoStoreBuilder.h"
 #include "HotUpdateEditor.h"
-#include "HAL/PlatformFileManager.h"
+#include "HotUpdatePackageHelper.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/App.h"
-#include "Misc/SecureHash.h"
 #include "Misc/PackageName.h"
-#include "GenericPlatform/GenericPlatformProcess.h"
 
-UHotUpdateIoStoreBuilder::UHotUpdateIoStoreBuilder()
+FHotUpdateIoStoreBuilder::FHotUpdateIoStoreBuilder()
 	: bIsBuilding(false)
 	, bIsCancelled(false)
 {
 }
 
-FHotUpdateIoStoreResult UHotUpdateIoStoreBuilder::BuildIoStoreContainer(
-	const TMap<FString, FString>& AssetPathToDiskPath,
+FHotUpdateIoStoreResult FHotUpdateIoStoreBuilder::BuildIoStoreContainer(
+	const TArray<FString>& AssetPaths,
 	const FString& OutputPath,
-	const FHotUpdateIoStoreConfig& Config)
+	const FHotUpdateIoStoreConfig& Config,
+	const FString& CookedPlatformDir)
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("BuildIoStoreContainer (同步) 开始调用"));
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("  输出路径: %s"), *OutputPath);
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  资源文件数: %d"), AssetPathToDiskPath.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("  资源文件数: %d"), AssetPaths.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("  CookedPlatformDir: %s"), CookedPlatformDir.IsEmpty() ? TEXT("(未提供)") : *CookedPlatformDir);
 
 	FHotUpdateIoStoreResult Result;
 
@@ -41,83 +41,28 @@ FHotUpdateIoStoreResult UHotUpdateIoStoreBuilder::BuildIoStoreContainer(
 	bIsCancelled = false;
 
 	// 执行构建
-	bool bSuccess = CreateIoStoreWithUnrealPak(AssetPathToDiskPath, OutputPath, Config, Result);
+	bool bSuccess = CreateIoStoreWithUnrealPak(AssetPaths, OutputPath, Config, CookedPlatformDir, Result);
 
 	Result.bSuccess = bSuccess;
-	Result.FileCount = AssetPathToDiskPath.Num();
+	Result.FileCount = AssetPaths.Num();
 
 	bIsBuilding = false;
 
 	return Result;
 }
 
-void UHotUpdateIoStoreBuilder::BuildIoStoreContainerAsync(
-	const TMap<FString, FString>& AssetPathToDiskPath,
-	const FString& OutputPath,
-	const FHotUpdateIoStoreConfig& Config)
-{
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("BuildIoStoreContainerAsync 开始调用"));
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  bIsBuilding: %s"), bIsBuilding ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  BuildTask.IsValid(): %s"), BuildTask.IsValid() ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  BuildTask.IsReady(): %s"), BuildTask.IsReady() ? TEXT("true") : TEXT("false"));
-
-	if (bIsBuilding)
-	{
-		if (BuildTask.IsValid() && !BuildTask.IsReady())
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("已有构建任务正在运行，拒绝新的构建请求"));
-			FHotUpdateIoStoreResult Result;
-			Result.bSuccess = false;
-			Result.ErrorMessage = TEXT("已有构建任务正在进行中");
-			OnComplete.Broadcast(Result);
-			return;
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("检测到之前的构建异常终止，正在重置构建状态"));
-			bIsBuilding = false;
-			bIsCancelled = false;
-		}
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始新的构建任务，输出路径: %s"), *OutputPath);
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("资源文件数: %d"), AssetPathToDiskPath.Num());
-
-	bIsBuilding = true;
-	bIsCancelled = false;
-
-	BuildTask = Async(EAsyncExecution::Thread, [WeakThis = TWeakObjectPtr<UHotUpdateIoStoreBuilder>(this), AssetPathToDiskPath, OutputPath, Config]()
-	{
-		if (!WeakThis.IsValid()) return;
-		auto* Self = WeakThis.Get();
-		FHotUpdateIoStoreResult Result;
-		bool bSuccess = Self->CreateIoStoreWithUnrealPak(AssetPathToDiskPath, OutputPath, Config, Result);
-
-		Result.bSuccess = bSuccess;
-		Result.FileCount = AssetPathToDiskPath.Num();
-
-		Self->bIsBuilding = false;
-
-		AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
-		{
-			if (!WeakThis.IsValid()) return;
-			WeakThis.Get()->OnComplete.Broadcast(Result);
-		});
-	});
-}
-
-void UHotUpdateIoStoreBuilder::CancelBuild()
+void FHotUpdateIoStoreBuilder::CancelBuild()
 {
 	bIsCancelled = true;
 }
 
-FHotUpdateIoStoreProgress UHotUpdateIoStoreBuilder::GetCurrentProgress() const
+FHotUpdateIoStoreProgress FHotUpdateIoStoreBuilder::GetCurrentProgress() const
 {
 	FScopeLock Lock(&ProgressCriticalSection);
 	return CurrentProgress;
 }
 
-bool UHotUpdateIoStoreBuilder::ValidateConfig(const FHotUpdateIoStoreConfig& Config, FString& OutErrorMessage)
+bool FHotUpdateIoStoreBuilder::ValidateConfig(const FHotUpdateIoStoreConfig& Config, FString& OutErrorMessage)
 {
 	if (Config.ContainerName.IsEmpty())
 	{
@@ -137,10 +82,11 @@ bool UHotUpdateIoStoreBuilder::ValidateConfig(const FHotUpdateIoStoreConfig& Con
 	return true;
 }
 
-bool UHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
-	const TMap<FString, FString>& AssetPathToDiskPath,
+bool FHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
+	const TArray<FString>& AssetPaths,
 	const FString& OutputPath,
 	const FHotUpdateIoStoreConfig& Config,
+	const FString& CookedPlatformDir,
 	FHotUpdateIoStoreResult& OutResult)
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始创建 IoStore/Pak 容器: %s"), *OutputPath);
@@ -165,8 +111,8 @@ bool UHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
 	int32 ValidFileCount = 0;
 	int64 TotalSize = 0;
 
-	if (!GenerateResponseFile(AssetPathToDiskPath, ResponseFilePath,
-		Config.CompressionFormat, ValidFileCount, TotalSize, OutResult.ErrorMessage))
+	if (!GenerateResponseFile(AssetPaths, ResponseFilePath,
+		Config.CompressionFormat, CookedPlatformDir, ValidFileCount, TotalSize, OutResult.ErrorMessage))
 	{
 		CleanupTempDirectory(TempDir);
 		return false;
@@ -208,7 +154,7 @@ bool UHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
 	return true;
 }
 
-FString UHotUpdateIoStoreBuilder::FindUnrealPakPath(FString& OutErrorMessage)
+FString FHotUpdateIoStoreBuilder::FindUnrealPakPath(FString& OutErrorMessage)
 {
 	FString EngineDir = FPaths::EngineDir();
 	#if PLATFORM_WINDOWS
@@ -229,7 +175,7 @@ FString UHotUpdateIoStoreBuilder::FindUnrealPakPath(FString& OutErrorMessage)
 	return UnrealPakPath;
 }
 
-bool UHotUpdateIoStoreBuilder::PrepareTempDirectory(
+bool FHotUpdateIoStoreBuilder::PrepareTempDirectory(
 	const FString& TempDir,
 	FString& OutErrorMessage)
 {
@@ -252,145 +198,11 @@ bool UHotUpdateIoStoreBuilder::PrepareTempDirectory(
 	return true;
 }
 
-FString UHotUpdateIoStoreBuilder::DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath)
-{
-	// 情况1：路径已有 UE 资源扩展名，剥离后返回
-	if (InOutPakPath.EndsWith(TEXT(".uasset")) || InOutPakPath.EndsWith(TEXT(".umap")) ||
-		InOutPakPath.EndsWith(TEXT(".uexp")) || InOutPakPath.EndsWith(TEXT(".ubulk")) ||
-		InOutPakPath.EndsWith(TEXT(".ubulk2")))
-	{
-		int32 DotIndex;
-		if (InOutPakPath.FindChar('.', DotIndex))
-		{
-			FString Extension = InOutPakPath.Mid(DotIndex + 1);
-			InOutPakPath = InOutPakPath.Left(DotIndex);
-			return Extension;
-		}
-	}
-
-	// 情况2：路径有非 UE 扩展名（如 .txt/.ini 等 Staged 文件），保留原始路径，不追加扩展名
-	FString PathExt = FPaths::GetExtension(InOutPakPath);
-	if (!PathExt.IsEmpty() && PathExt != TEXT("uasset") && PathExt != TEXT("umap"))
-	{
-		return TEXT("");
-	}
-
-	// 情况3：无扩展名，从磁盘路径获取
-	if (!DiskPath.IsEmpty())
-	{
-		FString Extension = FPaths::GetExtension(DiskPath);
-		if (!Extension.IsEmpty())
-		{
-			return Extension;
-		}
-	}
-
-	// 情况4：回退启发式，地图用 umap，其他用 uasset
-	if (InOutPakPath.Contains(TEXT("/Maps/")) || InOutPakPath.Contains(TEXT("/Map/")))
-	{
-		return TEXT("umap");
-	}
-	return TEXT("uasset");
-}
-
-FString UHotUpdateIoStoreBuilder::MapPluginPathToPakMountPath(const FString& PluginPakPath, const FString& ProjectName)
-{
-	// 尝试通过 FPackageName 解析实际文件路径
-	FString ResolvedPath;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(PluginPakPath, ResolvedPath, TEXT("")))
-	{
-		UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetPakInternalPath: FPackageName 无法解析 %s，默认按引擎插件处理"), *PluginPakPath);
-		return FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PluginPakPath.Mid(1));
-	}
-
-	// 规范化路径用于前缀比较
-	FString NormalizedResolved = ResolvedPath;
-	FPaths::NormalizeDirectoryName(NormalizedResolved);
-
-	FString NormalizedEngineDir = FPaths::EngineDir();
-	FPaths::NormalizeDirectoryName(NormalizedEngineDir);
-
-	FString NormalizedProjectDir = FPaths::ProjectDir();
-	FPaths::NormalizeDirectoryName(NormalizedProjectDir);
-
-	// 引擎插件：解析路径以引擎目录开头
-	if (NormalizedResolved.StartsWith(NormalizedEngineDir))
-	{
-		FString RelativePath = NormalizedResolved.RightChop(NormalizedEngineDir.Len());
-		return FString::Printf(TEXT("../../../Engine/%s"), *RelativePath);
-	}
-
-	// 项目插件：解析路径以项目目录开头
-	if (NormalizedResolved.StartsWith(NormalizedProjectDir))
-	{
-		FString RelativePath = NormalizedResolved.RightChop(NormalizedProjectDir.Len());
-		return FString::Printf(TEXT("../../../%s/%s"), *ProjectName, *RelativePath);
-	}
-
-	// 无法分类，按引擎插件处理
-	UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetPakInternalPath: 无法分类插件路径 %s，默认按引擎插件处理"), *PluginPakPath);
-	return FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PluginPakPath.Mid(1));
-}
-
-FString UHotUpdateIoStoreBuilder::MapToPakMountPath(const FString& PakPath)
-{
-	FString ProjectName = FApp::GetProjectName();
-
-	// /Game/ 映射到项目 Content 目录
-	if (PakPath.StartsWith(TEXT("/Game/")))
-	{
-		return FString::Printf(TEXT("../../../%s/Content/%s"), *ProjectName, *PakPath.Mid(6));
-	}
-
-	// /Engine/ 映射到引擎 Content 目录
-	if (PakPath.StartsWith(TEXT("/Engine/")))
-	{
-		return FString::Printf(TEXT("../../../Engine/Content/%s"), *PakPath.Mid(9));
-	}
-
-	// 其他 / 开头的路径视为插件路径
-	return MapPluginPathToPakMountPath(PakPath, ProjectName);
-}
-
-FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, const FString& DiskPath)
-{
-	// 从 AssetPath（如 "/Game/Maps/Start"）转换为 Pak 内部路径（Dest 路径）
-	// UE5 标准 pak 的 Dest 路径格式: ../../../{ProjectName}/Content/...
-	// 这样 GetCommonRootPath 会计算出 mount point 为 "../../../"
-	// 与标准基础 pak 的 mount point 一致，运行时才能正确匹配文件路径
-
-	FString PakPath = AssetPath;
-
-	// 确保路径以 / 开头（标准 UE 长包名格式）
-	if (!PakPath.StartsWith(TEXT("/")))
-	{
-		PakPath = TEXT("/") + PakPath;
-	}
-
-	// 步骤1：确定文件扩展名（可能剥离路径中已有的 UE 扩展名）
-	FString Extension = DetermineAssetExtension(PakPath, DiskPath);
-
-	// 步骤2：挂载点映射
-	PakPath = MapToPakMountPath(PakPath);
-
-	// 步骤3：追加扩展名
-	if (!Extension.IsEmpty())
-	{
-		PakPath += TEXT(".") + Extension;
-	}
-
-	// 确保使用正斜杠
-	PakPath.ReplaceCharInline('\\', '/');
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("AssetPath -> PakPath: %s -> %s"), *AssetPath, *PakPath);
-
-	return PakPath;
-}
-
-bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
-	const TMap<FString, FString>& AssetPathToDiskPath,
+bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
+	const TArray<FString>& AssetPaths,
 	const FString& ResponseFilePath,
 	const FString& CompressionFormat,
+	const FString& CookedPlatformDir,
 	int32& OutValidFileCount,
 	int64& OutTotalSize,
 	FString& OutErrorMessage)
@@ -401,11 +213,17 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 	OutValidFileCount = 0;
 	OutTotalSize = 0;
 
-	int32 TotalAssets = AssetPathToDiskPath.Num();
+	int32 TotalAssets = AssetPaths.Num();
 	UpdateProgress(TEXT("准备资源"), TEXT(""), 0, TotalAssets, 0, 0);
 
+	// 如果 CookedPlatformDir 为空，输出警告（UE 资产可能缺少配套文件）
+	if (CookedPlatformDir.IsEmpty())
+	{
+		UE_LOG(LogHotUpdateEditor, Warning, TEXT("CookedPlatformDir 未提供，UE 资产可能缺少 .uexp/.ubulk 配套文件"));
+	}
+
 	int32 Index = 0;
-	for (const TPair<FString, FString>& Pair : AssetPathToDiskPath)
+	for (const FString& AssetPath : AssetPaths)
 	{
 		if (bIsCancelled)
 		{
@@ -413,17 +231,46 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 			return false;
 		}
 
-		const FString& AssetPath = Pair.Key;
-		const FString& DiskPath = Pair.Value;
+		// 区分 UE 资产和 Non-asset 文件
+		bool bIsUAsset = FHotUpdatePackageHelper::IsUAsset(AssetPath);
+		FString DiskPath;
 
-		if (!PlatformFile.FileExists(*DiskPath))
+		if (bIsUAsset && !CookedPlatformDir.IsEmpty())
 		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("源文件不存在: %s (Asset: %s)"), *DiskPath, *AssetPath);
+			// UE 资产：从 Cooked 目录获取（包含配套文件）
+			DiskPath = FHotUpdatePackageHelper::GetCookedAssetPath(AssetPath, CookedPlatformDir);
+		}
+		else if (bIsUAsset)
+		{
+			// UE 资产但没有 CookedPlatformDir：fallback 到源文件（向后兼容）
+			DiskPath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+		}
+		else
+		{
+			// Non-asset 文件：直接从源目录获取（不需要 Cook）
+			DiskPath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+		}
+
+		if (DiskPath.IsEmpty() || !PlatformFile.FileExists(*DiskPath))
+		{
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("文件不存在: %s (Asset: %s, IsUAsset: %s)"),
+				*DiskPath, *AssetPath, bIsUAsset ? TEXT("true") : TEXT("false"));
 			continue;
 		}
 
-		// 使用 AssetPath 和 DiskPath 计算 Pak 内部路径
-		FString PakInternalPath = GetPakInternalPath(AssetPath, DiskPath);
+		// 使用 AssetPath 计算 Pak 内部路径
+		FString PakInternalPath = FHotUpdatePackageHelper::GetAssetPakMountPath(AssetPath);
+
+		// UE 资产的虚拟包路径没有扩展名，需要从 DiskPath（源文件）获取扩展名添加到 PakInternalPath
+		// 例如：/Game/Maps/Start -> ../../../GameUpdate/Content/Maps/Start.umap
+		if (bIsUAsset && !DiskPath.IsEmpty())
+		{
+			FString Extension = FPaths::GetExtension(DiskPath);
+			if (!Extension.IsEmpty() && !PakInternalPath.EndsWith(Extension))
+			{
+				PakInternalPath += TEXT(".") + Extension;
+			}
+		}
 
 		// 源路径使用正斜杠
 		FString UnixDiskPath = DiskPath;
@@ -437,33 +284,44 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 		OutTotalSize += FileSize;
 		OutValidFileCount++;
 
-		// 收集配套文件 (.uexp, .ubulk, .ubulk2)
+		// 只对 UE 资产查找配套文件 (.uexp, .ubulk, .ubulk2)
 		// UE5 的 uasset/umap 通常有对应的 .uexp（导出数据）和 .ubulk（批量数据）
 		// 基础包中这些文件同时存在，Patch 也必须包含，否则运行时读取越界崩溃
-		FString DiskDir = FPaths::GetPath(DiskPath);
-		FString BaseFilename = FPaths::GetBaseFilename(DiskPath);
-		FString PakInternalDir = FPaths::GetPath(PakInternalPath);
-		FString PakInternalBaseFilename = FPaths::GetBaseFilename(PakInternalPath);
-
-		static const TArray<FString> CompanionExtensions = { TEXT("uexp"), TEXT("ubulk"), TEXT("ubulk2") };
-		for (const FString& CompanionExt : CompanionExtensions)
+		// Non-asset 文件不需要配套文件
+		if (bIsUAsset)
 		{
-			FString CompanionDiskPath = FPaths::Combine(DiskDir, BaseFilename + TEXT(".") + CompanionExt);
-			if (PlatformFile.FileExists(*CompanionDiskPath))
+			FString DiskDir = FPaths::GetPath(DiskPath);
+			FString BaseFilename = FPaths::GetBaseFilename(DiskPath);
+			FString PakInternalDir = FPaths::GetPath(PakInternalPath);
+			// 配套文件的基础名需要去掉主文件的扩展名
+			// 例如：Lvl_TopDown.umap -> Lvl_TopDown（配套文件是 Lvl_TopDown.uexp）
+			FString PakInternalBaseFilename = FPaths::GetBaseFilename(PakInternalPath);
+			// 如果 PakInternalBaseFilename 包含扩展名，去掉它
+			if (PakInternalBaseFilename.Contains(TEXT(".")))
 			{
-				FString CompanionPakPath = PakInternalDir / (PakInternalBaseFilename + TEXT(".") + CompanionExt);
-				CompanionPakPath.ReplaceCharInline('\\', '/');
+				PakInternalBaseFilename = FPaths::GetBaseFilename(BaseFilename);
+			}
 
-				FString UnixCompanionDiskPath = CompanionDiskPath;
-				UnixCompanionDiskPath.ReplaceCharInline('\\', '/');
+			static const TArray<FString> CompanionExtensions = { TEXT("uexp"), TEXT("ubulk"), TEXT("ubulk2") };
+			for (const FString& CompanionExt : CompanionExtensions)
+			{
+				FString CompanionDiskPath = FPaths::Combine(DiskDir, BaseFilename + TEXT(".") + CompanionExt);
+				if (PlatformFile.FileExists(*CompanionDiskPath))
+				{
+					FString CompanionPakPath = PakInternalDir / (PakInternalBaseFilename + TEXT(".") + CompanionExt);
+					CompanionPakPath.ReplaceCharInline('\\', '/');
 
-				ResponseContent += (CompressionFormat != TEXT("None"))
-						? FString::Printf(TEXT("\"%s\" \"%s\" -compress\n"), *UnixCompanionDiskPath, *CompanionPakPath)
-						: FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixCompanionDiskPath, *CompanionPakPath);
+					FString UnixCompanionDiskPath = CompanionDiskPath;
+					UnixCompanionDiskPath.ReplaceCharInline('\\', '/');
 
-				int64 CompanionSize = IFileManager::Get().FileSize(*CompanionDiskPath);
-				OutTotalSize += CompanionSize;
-				OutValidFileCount++;
+					ResponseContent += (CompressionFormat != TEXT("None"))
+							? FString::Printf(TEXT("\"%s\" \"%s\" -compress\n"), *UnixCompanionDiskPath, *CompanionPakPath)
+							: FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixCompanionDiskPath, *CompanionPakPath);
+
+					int64 CompanionSize = IFileManager::Get().FileSize(*CompanionDiskPath);
+					OutTotalSize += CompanionSize;
+					OutValidFileCount++;
+				}
 			}
 		}
 
@@ -507,7 +365,7 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 	return true;
 }
 
-bool UHotUpdateIoStoreBuilder::PrepareOutputDirectory(
+bool FHotUpdateIoStoreBuilder::PrepareOutputDirectory(
 	const FString& OutputPath,
 	FString& OutErrorMessage)
 {
@@ -536,7 +394,7 @@ bool UHotUpdateIoStoreBuilder::PrepareOutputDirectory(
 	return true;
 }
 
-FString UHotUpdateIoStoreBuilder::BuildUnrealPakCommandLine(
+FString FHotUpdateIoStoreBuilder::BuildUnrealPakCommandLine(
 	const FString& OutputPath,
 	const FString& ResponseFilePath,
 	const FString& CryptoKeyPath,
@@ -598,7 +456,7 @@ FString UHotUpdateIoStoreBuilder::BuildUnrealPakCommandLine(
 	return CmdLine;
 }
 
-bool UHotUpdateIoStoreBuilder::ExecuteUnrealPak(
+bool FHotUpdateIoStoreBuilder::ExecuteUnrealPak(
 	const FString& UnrealPakPath,
 	const FString& CmdLine,
 	const FString& OutputPath,
@@ -681,12 +539,12 @@ bool UHotUpdateIoStoreBuilder::ExecuteUnrealPak(
 	return false;
 }
 
-void UHotUpdateIoStoreBuilder::CleanupTempDirectory(const FString& TempDir)
+void FHotUpdateIoStoreBuilder::CleanupTempDirectory(const FString& TempDir)
 {
 	IPlatformFile::GetPlatformPhysical().DeleteDirectoryRecursively(*TempDir);
 }
 
-FString UHotUpdateIoStoreBuilder::GenerateCryptoKeyFile(
+FString FHotUpdateIoStoreBuilder::GenerateCryptoKeyFile(
 	const FString& TempDir,
 	const FHotUpdateIoStoreConfig& Config)
 {
@@ -697,7 +555,7 @@ FString UHotUpdateIoStoreBuilder::GenerateCryptoKeyFile(
 
 	FString CryptoPath = FPaths::Combine(TempDir, TEXT("Crypto.json"));
 
-	FString CryptoContent = FString::Printf(TEXT(
+	const FString CryptoContent = FString::Printf(TEXT(
 		"{\n"
 		"  \"EncryptionKey\": {\n"
 		"    \"Name\": \"%s\",\n"
@@ -719,7 +577,7 @@ FString UHotUpdateIoStoreBuilder::GenerateCryptoKeyFile(
 	return TEXT("");
 }
 
-void UHotUpdateIoStoreBuilder::UpdateProgress(
+void FHotUpdateIoStoreBuilder::UpdateProgress(
 	const FString& Stage,
 	const FString& CurrentFile,
 	int32 ProcessedFiles,

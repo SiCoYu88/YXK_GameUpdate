@@ -11,7 +11,7 @@
 #include "Widgets/Input/SSpinBox.h"
 #include "HotUpdateEditorTypes.h"
 
-class UHotUpdateCustomPackageBuilder;
+class FHotUpdateCustomPackageBuilder;
 class SProgressBar;
 
 /**
@@ -109,7 +109,7 @@ private:
 	TArray<FString> NonAssetFilePaths;
 
 	/** 更新包构建器 */
-	TObjectPtr<UHotUpdateCustomPackageBuilder> CustomPackageBuilder;
+	TSharedPtr<FHotUpdateCustomPackageBuilder> CustomPackageBuilder;
 
 	/** 是否正在打包 */
 	bool bIsPackaging;
