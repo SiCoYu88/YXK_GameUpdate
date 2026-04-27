@@ -111,6 +111,11 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "HotUpdate|Events")
 	FOnError OnError;
 
+	/// Pak 容器可用事件（RegisterAvailablePak 完成后广播，业务层可按需挂载）
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPaksAvailable);
+	UPROPERTY(BlueprintAssignable, Category = "HotUpdate|Events")
+	FOnPaksAvailable OnPaksAvailable;
+
 protected:
 	/// 设置状态
 	void SetState(EHotUpdateState NewState);

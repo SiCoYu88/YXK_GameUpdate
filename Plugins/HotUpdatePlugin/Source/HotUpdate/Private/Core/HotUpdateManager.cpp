@@ -402,7 +402,7 @@ bool UHotUpdateManager::ApplyUpdate()
 
 	if (bSuccess)
 	{
-		// 挂载新的 Pak/IoStore 文件
+		// 注册可用容器（不直接挂载，由业务层按需挂载或调用 MountAllRegistered）
 		if (PakManager)
 		{
 			UHotUpdateSettings* Settings = UHotUpdateSettings::Get();
@@ -418,41 +418,35 @@ bool UHotUpdateManager::ApplyUpdate()
 			TArray<FString> UtocFiles;
 			PlatformFile.FindFilesRecursively(UtocFiles, *PakDir, TEXT(".utoc"));
 
-			int32 MountedCount = 0;
-			int32 PakOrder = PakManager->CalculatePakOrder(LatestVersion);
-
-			// 挂载 .pak 文件
+			// 注册所有找到的容器
 			for (const FString& PakFile : PakFiles)
 			{
-				if (PakManager->MountPak(PakFile, PakOrder))
-				{
-					MountedCount++;
-					UE_LOG(LogHotUpdate, Log, TEXT("Mounted pak file: %s"), *PakFile);
-				}
-				else
-				{
-					UE_LOG(LogHotUpdate, Warning, TEXT("Failed to mount pak file: %s"), *PakFile);
-				}
+				FHotUpdatePakMetadata Metadata = PakManager->ParsePakMetadata(PakFile);
+				PakManager->RegisterAvailablePak(PakFile, Metadata);
+				UE_LOG(LogHotUpdate, Log, TEXT("Registered available pak: %s"), *PakFile);
 			}
 
-			// 挂载 IoStore 容器（.utoc）
 			for (const FString& UtocFile : UtocFiles)
 			{
-				if (PakManager->MountPak(UtocFile, PakOrder))
-				{
-					MountedCount++;
-					UE_LOG(LogHotUpdate, Log, TEXT("Mounted IoStore container: %s"), *UtocFile);
-				}
-				else
-				{
-					UE_LOG(LogHotUpdate, Warning, TEXT("Failed to mount IoStore container: %s"), *UtocFile);
-				}
+				FHotUpdatePakMetadata Metadata = PakManager->ParsePakMetadata(UtocFile);
+				PakManager->RegisterAvailablePak(UtocFile, Metadata);
+				UE_LOG(LogHotUpdate, Log, TEXT("Registered available IoStore container: %s"), *UtocFile);
 			}
+
+			// 广播容器可用事件
+			OnPaksAvailable.Broadcast();
+
+			// 一次性挂载所有已注册容器（保持与旧行为兼容）
+			int32 MountedCount = PakManager->MountAllRegistered();
 
 			if (MountedCount == 0 && (PakFiles.Num() > 0 || UtocFiles.Num() > 0))
 			{
 				bSuccess = false;
 				UE_LOG(LogHotUpdate, Error, TEXT("Failed to mount any pak/IoStore files"));
+			}
+			else
+			{
+				UE_LOG(LogHotUpdate, Log, TEXT("Mounted %d containers via MountAllRegistered"), MountedCount);
 			}
 		}
 
@@ -539,7 +533,7 @@ void UHotUpdateManager::CleanupOldVersions()
 			{
 				if (PakManager->IsPakMounted(PakFile))
 				{
-					PakManager->UnmountPak(PakFile);
+					PakManager->RequestUnmount(PakFile);
 					UE_LOG(LogHotUpdate, Log, TEXT("Unmounted before cleanup: %s"), *PakFile);
 				}
 			}
@@ -548,7 +542,7 @@ void UHotUpdateManager::CleanupOldVersions()
 			{
 				if (PakManager->IsPakMounted(UtocFile))
 				{
-					PakManager->UnmountPak(UtocFile);
+					PakManager->RequestUnmount(UtocFile);
 					UE_LOG(LogHotUpdate, Log, TEXT("Unmounted before cleanup: %s"), *UtocFile);
 				}
 			}
