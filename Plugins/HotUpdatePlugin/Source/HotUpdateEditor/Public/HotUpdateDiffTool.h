@@ -4,50 +4,21 @@
 
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
-#include "HotUpdateDiffTool.generated.h"
-
-class IAssetRegistry;
 
 /**
  * 资源差异比较工具
  * 用于比较两个版本间的资源差异
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdateDiffTool : public UObject
+class HOTUPDATEEDITOR_API FHotUpdateDiffTool
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdateDiffTool();
-
-	/**
-	 * 比较两个目录的资源差异
-	 * @param BaseDirectory 基础版本目录
-	 * @param TargetDirectory 目标版本目录
-	 * @param bRecursive 是否递归搜索
-	 * @return 差异报告
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|Diff")
-	FHotUpdateDiffReport CompareDirectories(
-		const FString& BaseDirectory,
-		const FString& TargetDirectory,
-		bool bRecursive = true);
 
 	/**
 	 * 比较两个Manifest文件的差异
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|Diff")
 	FHotUpdateDiffReport CompareManifests(
 		const FString& BaseManifestPath,
-		const FString& TargetManifestPath);
-
-	/**
-	 * 比较两个Pak文件的内容差异
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|Diff")
-	FHotUpdateDiffReport ComparePakFiles(
-		const FString& BasePakPath,
-		const FString& TargetPakPath);
+		const FString& TargetManifestPath) const;
 
 	/**
 	 * 获取资源类型图标名称
@@ -79,7 +50,7 @@ private:
 	 * @param bIncludeHiddenFiles 是否包含隐藏文件（传递给 FindFilesRecursive 的 bFindHidden 参数）
 	 * @param OutAssets 输出资源映射
 	 */
-	void ScanDirectory(
+	static void ScanDirectory(
 		const FString& Directory,
 		bool bIncludeHiddenFiles,
 		TMap<FString, FHotUpdateAssetDiff>& OutAssets);
@@ -87,21 +58,17 @@ private:
 	/**
 	 * 解析Manifest文件
 	 */
-	bool ParseManifestFile(
+	static bool ParseManifestFile(
 		const FString& ManifestPath,
 		TMap<FString, FHotUpdateManifestEntry>& OutEntries);
 
 	/**
 	 * 从Pak文件中提取文件名到SHA1 Hash的映射
 	 */
-	TMap<FString, FString> GetPakFileHashes(const FString& PakPath);
+	static TMap<FString, FString> GetPakFileHashes(const FString& PakPath);
 
 	/**
 	 * 获取文件扩展名对应的资源类型
 	 */
-	FString GetAssetTypeFromExtension(const FString& Extension);
-
-private:
-	/// 资源注册表
-	IAssetRegistry* AssetRegistry;
+	static FString GetAssetTypeFromExtension(const FString& Extension);
 };

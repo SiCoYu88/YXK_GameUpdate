@@ -18,7 +18,7 @@ UHotUpdateEditorSettings::UHotUpdateEditorSettings()
 	, DefaultDependencyStrategy(EHotUpdateDependencyStrategy::HardOnly)
 {
 	// 设置默认输出目录
-	DefaultOutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdatePackages");
+	DefaultOutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
 }
 
 #if WITH_EDITOR

@@ -5,12 +5,10 @@
 #include "Widgets/HotUpdateMainWindow.h"
 #include "ToolMenus.h"
 #include "Styling/AppStyle.h"
-#include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructureModule.h"
 #include "WorkspaceMenuStructure.h"
-#include "Framework/Docking/WorkspaceItem.h"
 
 // 日志分类定义
 DEFINE_LOG_CATEGORY(LogHotUpdateEditor);

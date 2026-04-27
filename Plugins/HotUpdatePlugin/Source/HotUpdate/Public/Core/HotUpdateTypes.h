@@ -272,10 +272,6 @@ struct HOTUPDATE_API FHotUpdateContainerInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
 	EHotUpdateContainerType ContainerType;
 
-	/// 容器所属 Chunk ID
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	int32 ChunkId;
-
 	/// 容器所属版本
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
 	FString Version;
@@ -289,21 +285,20 @@ struct HOTUPDATE_API FHotUpdateContainerInfo
 		, UcasSize(0)
 		, PakSize(0)
 		, ContainerType(EHotUpdateContainerType::Base)
-		, ChunkId(0)
 		, Version(TEXT(""))
 	{
 	}
 
-	/// 比较运算符（基于 ChunkId，与增量计算器一致）
+	/// 比较运算符（基于 ContainerName）
 	bool operator==(const FHotUpdateContainerInfo& Other) const
 	{
-		return ChunkId == Other.ChunkId;
+		return ContainerName == Other.ContainerName;
 	}
 
 	/// 哈希函数（支持 TSet/TMap）
 	friend uint32 GetTypeHash(const FHotUpdateContainerInfo& Container)
 	{
-		return GetTypeHash(Container.ChunkId);
+		return GetTypeHash(Container.ContainerName);
 	}
 };
 
@@ -331,10 +326,6 @@ struct HOTUPDATE_API FHotUpdateManifestEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	int32 ChunkId;
 
-	/// 下载优先级
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	int32 Priority;
-
 	/// 是否压缩
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	bool bIsCompressed;
@@ -346,7 +337,6 @@ struct HOTUPDATE_API FHotUpdateManifestEntry
 	FHotUpdateManifestEntry()
 		: FileSize(0)
 		, ChunkId(-1)
-		, Priority(0)
 		, bIsCompressed(false)
 		, CompressedSize(0)
 	{

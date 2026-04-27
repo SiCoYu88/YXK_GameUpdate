@@ -277,11 +277,6 @@ FHotUpdatePakMetadata UHotUpdatePakManager::ParsePakMetadata(const FString& PakP
 				Metadata.Version = FHotUpdateVersionInfo::FromString(Part);
 			}
 		}
-		// 检查是否为 Chunk ID
-		else if (Part.IsNumeric())
-		{
-			Metadata.ChunkId = FCString::Atoi(*Part);
-		}
 	}
 
 	return Metadata;

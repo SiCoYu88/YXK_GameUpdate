@@ -1,6 +1,8 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateAssetFilter.h"
+
+#include "HotUpdatePackageHelper.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/AssetData.h"
 
@@ -30,7 +32,7 @@ void FHotUpdateAssetFilter::FilterAssets(const TArray<FString>& InAssetPaths, co
 		for (const FString& Asset : WhitelistSet)
 		{
 			TSet<FString> Dependencies;
-			GetDependencies(Asset, AssetRegistry, Config.DependencyStrategy, 0, Dependencies);
+			GetDependencies(Asset, AssetRegistry, Config.DependencyStrategy, Dependencies);
 			FinalWhitelist.Append(Dependencies);
 		}
 		UE_LOG(LogHotUpdateAssetFilter, Log, TEXT("依赖收集后，白名单资产数: %d (添加依赖数: %d)"), FinalWhitelist.Num(), FinalWhitelist.Num() - WhitelistSet.Num());
@@ -61,7 +63,7 @@ bool FHotUpdateAssetFilter::MatchesFilterRule(
 	}
 
 	// 检查路径匹配
-	bool bPathMatches = false;
+	bool bPathMatches;
 
 	if (Rule.AssetPath.Contains(TEXT("*")))
 	{
@@ -197,19 +199,16 @@ void FHotUpdateAssetFilter::GetDependencies(
 	const FString& AssetPath,
 	IAssetRegistry* AssetRegistry,
 	EHotUpdateDependencyStrategy Strategy,
-	int32 MaxDepth,
 	TSet<FString>& OutDependencies)
 {
 	TSet<FString> Visited;
-	GetDependenciesRecursive(AssetPath, AssetRegistry, Strategy, 0, MaxDepth, OutDependencies, Visited);
+	GetDependenciesRecursive(AssetPath, AssetRegistry, Strategy, OutDependencies, Visited);
 }
 
 void FHotUpdateAssetFilter::GetDependenciesRecursive(
 	const FString& AssetPath,
 	IAssetRegistry* AssetRegistry,
 	EHotUpdateDependencyStrategy Strategy,
-	int32 CurrentDepth,
-	int32 MaxDepth,
 	TSet<FString>& OutDependencies,
 	TSet<FString>& Visited)
 {
@@ -225,57 +224,60 @@ void FHotUpdateAssetFilter::GetDependenciesRecursive(
 	}
 	Visited.Add(AssetPath);
 
-	// 检查深度限制
-	if (MaxDepth > 0 && CurrentDepth >= MaxDepth)
-	{
-		return;
-	}
+	// 添加当前资产到结果
+	OutDependencies.Add(AssetPath);
 
 	// 根据策略获取依赖
 	TArray<FName> Dependencies;
 	UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package;
-	UE::AssetRegistry::FDependencyQuery Query;
 
 	switch (Strategy)
 	{
 	case EHotUpdateDependencyStrategy::IncludeAll:
-		Query = UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard | UE::AssetRegistry::EDependencyQuery::Soft);
+		{
+			// 必须分两次查询，Hard 和 Soft 不能用位或组合
+			// 因为 Soft = NotHard，组合后会导致 Required 和 Excluded 同时设置 Hard，矛盾
+			TArray<FName> HardDeps;
+			TArray<FName> SoftDeps;
+			AssetRegistry->GetDependencies(FName(*AssetPath), HardDeps, Category,
+				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
+			AssetRegistry->GetDependencies(FName(*AssetPath), SoftDeps, Category,
+				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
+			Dependencies.Append(HardDeps);
+			Dependencies.Append(SoftDeps);
+		}
 		break;
 	case EHotUpdateDependencyStrategy::HardOnly:
-		Query = UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard);
+		AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies, Category,
+			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
 		break;
 	case EHotUpdateDependencyStrategy::SoftOnly:
-		Query = UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft);
+		AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies, Category,
+			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
 		break;
 	case EHotUpdateDependencyStrategy::None:
 		// 不收集依赖，直接返回
 		return;
 	default:
-		Query = UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard);
+		AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies, Category,
+			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
 		break;
 	}
 
-	if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies, Category, Query))
+	for (const FName& Dep : Dependencies)
 	{
-		for (const FName& Dep : Dependencies)
+		FString DepStr = Dep.ToString();
+
+		if (FPackageName::IsScriptPackage(DepStr) || FPackageName::IsMemoryPackage(DepStr))
 		{
-			FString DepStr = Dep.ToString();
-
-			// 只处理资产路径：/Game/、/Engine/、插件路径（如 /NNE/、/Water/）
-			// 排除 /Script/ 路径（C++ 类型引用，不是资产）
-			if (!(DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
-				(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/")))))
-			{
-				continue;
-			}
-
-
-			// 添加到结果
-			OutDependencies.Add(DepStr);
-
-			// 递归获取依赖
-			GetDependenciesRecursive(DepStr, AssetRegistry, Strategy, CurrentDepth + 1, MaxDepth, OutDependencies, Visited);
+			continue;
 		}
+
+		// 添加到结果
+		OutDependencies.Add(DepStr);
+
+		// 递归获取依赖
+		GetDependenciesRecursive(DepStr, AssetRegistry, Strategy, OutDependencies, Visited);
 	}
 }
 

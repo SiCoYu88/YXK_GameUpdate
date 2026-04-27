@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Core/HotUpdateTypes.h"
-#include "Core/HotUpdatePakTypes.h"
 #include "HotUpdateEditorTypes.generated.h"
 
 /**
@@ -77,6 +76,68 @@ enum class EHotUpdateDependencyStrategy : uint8
 };
 
 /**
+ * 基础版本构建进度
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildProgress
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	FString CurrentStage;
+
+	UPROPERTY(BlueprintReadOnly)
+	float ProgressPercent;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString StatusMessage;
+
+	FHotUpdateBaseVersionBuildProgress()
+		: ProgressPercent(0.0f)
+	{
+	}
+};
+
+/**
+ * 基础版本构建结果
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	bool bSuccess;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString VersionString;
+
+	UPROPERTY(BlueprintReadOnly)
+	EHotUpdatePlatform Platform;
+
+	/// 可执行文件路径 (exe/apk)
+	UPROPERTY(BlueprintReadOnly)
+	FString ExecutablePath;
+
+	/// 输出目录
+	UPROPERTY(BlueprintReadOnly)
+	FString OutputDirectory;
+
+	/// 资源Hash清单路径
+	UPROPERTY(BlueprintReadOnly)
+	FString ResourceHashPath;
+
+	/// 错误信息
+	UPROPERTY(BlueprintReadOnly)
+	FString ErrorMessage;
+
+	FHotUpdateBaseVersionBuildResult()
+		: bSuccess(false), Platform(EHotUpdatePlatform::Windows)
+	{
+	}
+};
+
+/**
  * 版本选择项（用于热更包版本选择器）
  */
 USTRUCT(BlueprintType)
@@ -100,9 +161,9 @@ struct HOTUPDATEEDITOR_API FHotUpdateVersionSelectItem
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
 	FString DisplayName;
 
-	/// Manifest 路径
+	/// FileManifest 路径（filemanifest.json，用于打包差异计算）
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
-	FString ManifestPath;
+	FString FileManifestPath;
 
 	/// 创建时间
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
@@ -370,10 +431,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkDefinition
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	FString ChunkName;
 
-	/// 加载优先级（越小越先加载）
-	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
-	int32 Priority;
-
 	/// 包含的资源路径
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	TArray<FString> AssetPaths;
@@ -388,7 +445,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkDefinition
 
 	FHotUpdateChunkDefinition()
 		: ChunkId(-1)
-		, Priority(0)
 		, UncompressedSize(0)
 		, CompressedSize(0)
 	{
@@ -416,9 +472,9 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	EHotUpdatePlatform Platform;
 
-	/// 基础版本 Manifest 路径
+	/// 基础版本 FileManifest 路径（filemanifest.json）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	FFilePath BaseManifestPath;
+	FFilePath BaseFileManifestPath;
 
 
 	/// 是否包含依赖资源
@@ -450,17 +506,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "IoStore")
 	FHotUpdateIoStoreConfig IoStoreConfig;
 
-	/// === 链式 Patch 配置 ===
-
-	/// 是否启用链式 Patch 模式（每个 patch 包含之前所有 patch 的 container 信息）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChainPatch")
-	bool bEnableChainPatch;
-
-	/// 之前 Patch 的 Manifest 路径列表（链式模式需要）
-	/// 例如：从 1.0.0 -> 1.0.1 -> 1.0.2，这里需要填入 1.0.1 的 manifest 路径
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChainPatch")
-	TArray<FFilePath> PreviousPatchManifestPaths;
-
 	/// === 全量热更新配置 ===
 
 	/// 是否包含基础版本容器（全量热更新模式）
@@ -471,24 +516,25 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 
 	/// 基础版本容器目录路径（全量热更新模式需要）
 	/// 指向基础版本的输出目录，包含 .utoc/.ucas 文件
-	/// 例如：Saved/HotUpdatePackages/1.0.0/Windows
+	/// 例如：Saved/HotUpdateVersions/1.0.0/Windows
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
 	FDirectoryPath BaseContainerDirectory;
 
-	/// 预收集的完整资源列表（含依赖，由游戏线程填充，后台线程直接使用）
-	TArray<FString> PreCollectedAssetPaths;
+	/// 预收集的完整资源列表
+	TArray<FString> AssetPaths;
 
 	/// 预收集的非 UE 资源列表（Staged 文件）
-	TArray<FString> PreCollectedNonAssetPaths;
+	TArray<FString> NonAssetPaths;
+
+	bool bSynchronousMode;
 
 	FHotUpdatePatchPackageConfig()
 		: Platform(EHotUpdatePlatform::Windows)
-		, bIncludeDependencies(true)
-		, bSkipCook(false)
-		, bIncrementalCook(false)
-		, bSkipBuild(false)
-		, bEnableChainPatch(false)
-		, bIncludeBaseContainers(false)
+		  , bIncludeDependencies(true)
+		  , bSkipCook(false)
+		  , bIncrementalCook(false)
+		  , bSkipBuild(false)
+		  , bIncludeBaseContainers(false), bSynchronousMode(false)
 	{
 	}
 };
@@ -505,10 +551,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateAssetDiff
 	/// 资源路径
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diff")
 	FString AssetPath;
-
-	/// 资源类型
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diff")
-	FString AssetType;
 
 	/// 变更类型
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diff")
@@ -645,20 +687,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageResult
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	bool bRequiresBasePackage;
 
-	/// === 链式 Patch 结果 ===
-
-	/// 是否是链式 Patch
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	bool bIsChainPatch;
-
-	/// 链式 Patch 的容器信息列表（包含当前和之前的所有 patch container）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	TArray<FHotUpdateContainerInfo> ChainPatchContainers;
-
-	/// Patch 版本链（如 ["1.0.1", "1.0.2"]）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	TArray<FString> PatchVersionChain;
-
 	/// === 全量热更新结果 ===
 
 	/// 是否包含基础版本容器
@@ -682,7 +710,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageResult
 		, ChangedAssetCount(0)
 		, PatchSize(0)
 		, bRequiresBasePackage(true)
-		, bIsChainPatch(false)
 		, bIncludesBaseContainers(false)
 		, TotalDownloadSize(0)
 	{
@@ -784,9 +811,9 @@ struct HOTUPDATEEDITOR_API FHotUpdateEditorVersionInfo
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
 	FDateTime CreatedTime;
 
-	/// Manifest 文件路径
+	/// FileManifest 文件路径（filemanifest.json，用于打包差异计算）
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
-	FString ManifestPath;
+	FString FileManifestPath;
 
 	/// IoStore 容器路径（.utoc）
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
@@ -857,11 +884,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	EHotUpdatePlatform Platform;
 
-
-	/// 资源路径列表
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	TArray<FString> AssetPaths;
-
 	/// 输出格式
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	EHotUpdateOutputFormat OutputFormat;
@@ -882,10 +904,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	bool bIncludeDependencies;
 
-	/// 是否生成 Manifest
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	bool bGenerateManifest;
-
 	/// Chunk ID（-1 表示自动分配）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	int32 ChunkId;
@@ -898,10 +916,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging", meta = (ClampMin = "1"))
 	int32 MaxChunkSizeMB;
 
-	/// 打包模式（基础包/热更包）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	EHotUpdatePackagingMode PackagingMode;
-
 	/// Android 纹理格式
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	EHotUpdateAndroidTextureFormat AndroidTextureFormat;
@@ -910,9 +924,9 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hotfix")
 	FString BasedOnVersion;
 
-	/// 基础 Manifest 路径（兼容旧配置）
+	/// 基础 FileManifest 路径（filemanifest.json，兼容旧配置）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hotfix")
-	FString BaseManifestPath;
+	FString BaseFileManifestPath;
 
 	/// 最小包配置
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MinimalPackage")
@@ -924,11 +938,9 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 		, bEnableCompression(true)
 		, CompressionLevel(4)
 		, bIncludeDependencies(true)
-		, bGenerateManifest(true)
 		, ChunkId(-1)
 		, ChunkStrategy(EHotUpdateChunkStrategy::Size)
 		, MaxChunkSizeMB(256)
-		, PackagingMode(EHotUpdatePackagingMode::BasePackage)
 		, AndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)
 	{
 	}
@@ -1024,6 +1036,8 @@ struct HOTUPDATEEDITOR_API FHotUpdateCustomPackageConfig
 	/// Pak 挂载优先级（容器名 _n_P 中的 n，0=默认_P，数字越大优先级越高）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging", meta = (ClampMin = "0"))
 	int32 PakPriority = 10;
+
+	bool bSynchronousMode = false;
 };
 
 /**

@@ -23,5 +23,5 @@ public:
      * @param CancelDelegate 取消按钮回调，未绑定则不显示取消按钮
      * @return 进度通知项，调用者负责在适当时机调用 ExpireAndFadeout()
      */
-    static TSharedPtr<SNotificationItem> ShowProgressNotification(const FText& Message, FSimpleDelegate CancelDelegate = FSimpleDelegate());
+    static TSharedPtr<SNotificationItem> ShowProgressNotification(const FText& Message, const FSimpleDelegate& CancelDelegate = FSimpleDelegate());
 };

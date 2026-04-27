@@ -4,38 +4,26 @@
 
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
-#include "HotUpdateCustomPackageBuilder.generated.h"
 
 /**
  * 自定义打包构建器
  * 独立于热更新打包流程，只 Cook 指定资源，不做版本差异对比
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdateCustomPackageBuilder : public UObject
+class HOTUPDATEEDITOR_API FHotUpdateCustomPackageBuilder : public TSharedFromThis<FHotUpdateCustomPackageBuilder>
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdateCustomPackageBuilder();
-
-	/** 同步构建自定义包 */
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|CustomPackage")
-	FHotUpdateCustomPackageResult BuildCustomPackage(const FHotUpdateCustomPackageConfig& Config);
-
+	FHotUpdateCustomPackageBuilder();
+	
 	/** 异步构建自定义包 */
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|CustomPackage")
 	void BuildCustomPackageAsync(const FHotUpdateCustomPackageConfig& Config);
 
 	/** 取消构建 */
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|CustomPackage")
 	void CancelBuild();
 
 	/** 是否正在构建 */
-	UFUNCTION(BlueprintPure, Category = "HotUpdate|CustomPackage")
 	bool IsBuilding() const { return bIsBuilding; }
 
 	/** 获取当前进度 */
-	UFUNCTION(BlueprintPure, Category = "HotUpdate|CustomPackage")
 	FHotUpdatePackageProgress GetCurrentProgress() const;
 
 	/** 进度委托 */
@@ -49,10 +37,10 @@ private:
 	TArray<FString> ResolveUassetPathsForCook() const;
 
 	/** 将 uasset 磁盘路径反向解析为 UE 包名 */
-	FString ResolveDiskPathToPackageName(const FString& DiskPath) const;
+	static FString ResolveDiskPathToPackageName(const FString& DiskPath);
 
 	/** 确定非资产文件在 Pak 内的挂载路径 */
-	FString DetermineNonAssetPakPath(const FString& DiskPath) const;
+	static FString DetermineNonAssetPakPath(const FString& DiskPath);
 
 	/** 后台线程执行的构建逻辑（不含 AssetRegistry 调用） */
 	FHotUpdateCustomPackageResult ExecuteBuild(const FHotUpdateCustomPackageConfig& Config, const TArray<FString>& AssetPathsToCook);

@@ -27,9 +27,6 @@ struct HOTUPDATE_API FHotUpdatePakMetadata
 	FString PakHash;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
-	int32 ChunkId;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	bool bIsMounted;
 
 	/// 版本信息
@@ -38,7 +35,6 @@ struct HOTUPDATE_API FHotUpdatePakMetadata
 
 	FHotUpdatePakMetadata()
 		: PakSize(0)
-		, ChunkId(-1)
 		, bIsMounted(false)
 	{
 	}

@@ -703,17 +703,17 @@ void UHotUpdateManager::CalculateIncrementalDownload(
 	const FHotUpdateManifest& LocalManifest,
 	FHotUpdateVersionCheckResult& OutResult)
 {
-	// 构建本地 Container 索引（ChunkId -> Container）
-	TMap<int32, const FHotUpdateContainerInfo*> LocalContainerIndex;
+	// 构建本地 Container 索引（ContainerName -> Container）
+	TMap<FString, const FHotUpdateContainerInfo*> LocalContainerIndex;
 	for (const FHotUpdateContainerInfo& Container : LocalManifest.Containers)
 	{
-		LocalContainerIndex.Add(Container.ChunkId, &Container);
+		LocalContainerIndex.Add(Container.ContainerName, &Container);
 	}
 
 	// 遍历服务端 Containers，分析差异
 	for (const FHotUpdateContainerInfo& ServerContainer : ServerManifest.Containers)
 	{
-		const FHotUpdateContainerInfo* const* LocalContainerPtr = LocalContainerIndex.Find(ServerContainer.ChunkId);
+		const FHotUpdateContainerInfo* const* LocalContainerPtr = LocalContainerIndex.Find(ServerContainer.ContainerName);
 
 		bool bNeedDownload = false;
 		FString Reason;
@@ -749,16 +749,16 @@ void UHotUpdateManager::CalculateIncrementalDownload(
 			OutResult.UpdateContainers.Add(ServerContainer);
 			OutResult.IncrementalDownloadSize += ServerContainer.UtocSize + ServerContainer.UcasSize;
 
-			UE_LOG(LogHotUpdate, Log, TEXT("Need download container: %s (chunkId: %d, reason: %s, size: %.2f MB)"),
-				*ServerContainer.ContainerName, ServerContainer.ChunkId, *Reason,
+			UE_LOG(LogHotUpdate, Log, TEXT("Need download container: %s (reason: %s, size: %.2f MB)"),
+				*ServerContainer.ContainerName, *Reason,
 				(ServerContainer.UtocSize + ServerContainer.UcasSize) / (1024.0 * 1024.0));
 		}
 		else
 		{
 			OutResult.SkippedContainerCount++;
 			OutResult.SkippedTotalSize += ServerContainer.UtocSize + ServerContainer.UcasSize;
-			UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped container: %s (chunkId: %d, unchanged)"),
-				*ServerContainer.ContainerName, ServerContainer.ChunkId);
+			UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped container: %s (unchanged)"),
+				*ServerContainer.ContainerName);
 		}
 	}
 
@@ -768,7 +768,7 @@ void UHotUpdateManager::CalculateIncrementalDownload(
 		bool bFound = false;
 		for (const FHotUpdateContainerInfo& ServerContainer : ServerManifest.Containers)
 		{
-			if (ServerContainer.ChunkId == LocalContainer.ChunkId)
+			if (ServerContainer.ContainerName == LocalContainer.ContainerName)
 			{
 				bFound = true;
 				break;
@@ -778,8 +778,8 @@ void UHotUpdateManager::CalculateIncrementalDownload(
 		if (!bFound)
 		{
 			OutResult.DeletedContainerCount++;
-			UE_LOG(LogHotUpdate, Verbose, TEXT("Deleted container: %s (chunkId: %d)"),
-				*LocalContainer.ContainerName, LocalContainer.ChunkId);
+			UE_LOG(LogHotUpdate, Verbose, TEXT("Deleted container: %s"),
+				*LocalContainer.ContainerName);
 		}
 	}
 

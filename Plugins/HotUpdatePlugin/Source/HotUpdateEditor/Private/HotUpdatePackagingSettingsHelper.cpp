@@ -2,10 +2,10 @@
 
 #include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateEditor.h"
+#include "HotUpdateAssetFilter.h"
+#include "HotUpdatePackageHelper.h"
 #include "Settings/ProjectPackagingSettings.h"
-#include "HAL/PlatformFileManager.h"
 #include "Misc/Paths.h"
-#include "Misc/App.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 
@@ -46,7 +46,7 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 	Result.AssetPaths.Append(AlwaysCookAssets);
 
 	// 3. 收集 DirectoriesToAlwaysStageAsUFS 中的非资产文件
-	CollectStagedFilesAsUFS(Result.AssetPaths);
+	CollectStagedFilesAsUFS(Result.NonAssetPaths);
 
 	// 4. 过滤 NeverCook 目录
 	int32 RemovedCount = 0;
@@ -77,9 +77,16 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 		TSet<FString> AllPaths(Result.AssetPaths);
 		for (const FString& AssetPath : Result.AssetPaths)
 		{
-			CollectPackageAndAllDependencies(*AssetRegistry, AssetPath, AllPaths);
+			FHotUpdateAssetFilter::GetDependencies(AssetPath, AssetRegistry, EHotUpdateDependencyStrategy::IncludeAll, AllPaths);
 		}
-		Result.AssetPaths = AllPaths.Array();
+
+		for (auto& Each : AllPaths)
+		{
+			if (!FHotUpdatePackageHelper::IsExternalAsset(Each))
+			{
+				Result.AssetPaths.Add(Each);
+			}
+		}
 	}
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("解析项目打包配置完成: %d 个资源"), Result.AssetPaths.Num());
@@ -109,7 +116,7 @@ TArray<FString> FHotUpdatePackagingSettingsHelper::CollectMapsToCook(UProjectPac
 	return Result;
 }
 
-TArray<FString> FHotUpdatePackagingSettingsHelper::CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, IAssetRegistry* AssetRegistry)
+TArray<FString> FHotUpdatePackagingSettingsHelper::CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, const IAssetRegistry* AssetRegistry)
 {
 	TArray<FString> Result;
 
@@ -258,29 +265,26 @@ public:
 	}
 };
 
-void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FString>& OutPaths)
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FString>& OutStagedFiles)
 {
 	UProjectPackagingSettings* Settings = GetPackagingSettings();
 	if (!Settings)
 	{
 		return;
 	}
-
-	FString ContentDir = FPaths::ProjectContentDir();
-
 	for (const FDirectoryPath& Dir : Settings->DirectoriesToAlwaysStageAsUFS)
 	{
-		CollectStagedFilesFromDirectory(Dir, ContentDir, OutPaths);
+		CollectStagedFilesFromDirectory(Dir, OutStagedFiles);
 	}
 }
 
-void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, const FString& ContentDir,
-	TArray<FString>& OutPaths)
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, TArray<FString>& OutStagedFiles)
 {
 	if (DirPath.Path.IsEmpty())
 	{
 		return;
 	}
+	const FString ContentDir = FPaths::ProjectContentDir();
 
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 	FString FullDir = FPaths::Combine(ContentDir, DirPath.Path);
@@ -297,54 +301,10 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FD
 
 	for (const FString& File : Visitor.FoundFiles)
 	{
-		// 计算短路径: Content/Setting/ui.txt -> Game/Setting/ui.txt
-		FString RelativePath = File;
-		FPaths::MakePathRelativeTo(RelativePath, *ContentDir);
-		FString PakPath = TEXT("Game") / RelativePath;
-		OutPaths.Add(PakPath);
-	}
-}
-
-void FHotUpdatePackagingSettingsHelper::CollectPackageAndAllReferencers(
-	IAssetRegistry& InAssetRegistry,
-	const FString& PackageName,
-	TSet<FString>& OutPackages)
-{
-	if (OutPackages.Contains(PackageName))
-		return;
-
-	OutPackages.Add(PackageName);
-
-	TArray<FName> HardReferencers;
-	InAssetRegistry.GetReferencers(FName(*PackageName), HardReferencers,
-		UE::AssetRegistry::EDependencyCategory::Package,
-		UE::AssetRegistry::EDependencyQuery::Hard);
-
-	for (const FName& Referencer : HardReferencers)
-	{
-		FString ReferencerStr = Referencer.ToString();
-		CollectPackageAndAllReferencers(InAssetRegistry, ReferencerStr, OutPackages);
-	}
-}
-
-void FHotUpdatePackagingSettingsHelper::CollectPackageAndAllDependencies(
-	IAssetRegistry& InAssetRegistry,
-	const FString& PackageName,
-	TSet<FString>& OutPackages)
-{
-	if (OutPackages.Contains(PackageName))
-		return;
-
-	OutPackages.Add(PackageName);
-
-	TArray<FName> Dependencies;
-	InAssetRegistry.GetDependencies(FName(*PackageName), Dependencies,
-		UE::AssetRegistry::EDependencyCategory::Package,
-		UE::AssetRegistry::EDependencyQuery::Hard | UE::AssetRegistry::EDependencyQuery::Soft);
-
-	for (const FName& Dependency : Dependencies)
-	{
-		FString DependencyStr = Dependency.ToString();
-		CollectPackageAndAllDependencies(InAssetRegistry, DependencyStr, OutPackages);
+		// PakPath: /{ProjectName}/Content/Setting/txt_pak.txt（用于 filemanifest.json 的 filePath）
+		FString PakPath = File;
+		FPaths::MakePathRelativeTo(PakPath, *ContentDir);
+		PakPath = TEXT("/") + FString(FApp::GetProjectName()) / TEXT("Content") / PakPath;
+		OutStagedFiles.Add(File);
 	}
 }

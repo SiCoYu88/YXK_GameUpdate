@@ -61,15 +61,14 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 	RefreshVersionSelectOptions();
 
 	// 创建更新包构建器
-	PatchPackageBuilder = NewObject<UHotUpdatePatchPackageBuilder>();
-	PatchPackageBuilder->AddToRoot();
+	PatchPackageBuilder = MakeShareable(new FHotUpdatePatchPackageBuilder());
 	PatchPackageBuilder->OnProgress.AddSP(this, &SHotUpdatePackagingPanel::OnPackagingProgress);
 	PatchPackageBuilder->OnComplete.AddSP(this, &SHotUpdatePackagingPanel::OnPackagingComplete);
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("SHotUpdatePackagingPanel::Construct 完成"));
 
 	// 默认输出目录
-	PackageConfig.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdatePackages");
+	PackageConfig.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
 
 	ChildSlot
 	[
@@ -90,12 +89,11 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 
 SHotUpdatePackagingPanel::~SHotUpdatePackagingPanel()
 {
-	if (PatchPackageBuilder)
+	if (PatchPackageBuilder.IsValid())
 	{
 		PatchPackageBuilder->OnProgress.RemoveAll(this);
 		PatchPackageBuilder->OnComplete.RemoveAll(this);
-		PatchPackageBuilder->RemoveFromRoot();
-		PatchPackageBuilder = nullptr;
+		PatchPackageBuilder.Reset();
 	}
 }
 
@@ -563,9 +561,6 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateAdvancedSettings()
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateIncrementalSettings()
 {
-	// 更新版本固定为热更包模式
-	PackageConfig.PackagingMode = EHotUpdatePackagingMode::HotfixPackage;
-
 	return SNew(SExpandableArea)
 		.Style(FAppStyle::Get(), "ExpandableArea")
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
@@ -628,7 +623,7 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateIncrementalSettings()
 						{
 							SelectedVersion = InItem;
 							PackageConfig.BasedOnVersion = InItem->VersionString;
-							PackageConfig.BaseManifestPath = InItem->ManifestPath;
+							PackageConfig.BaseFileManifestPath = InItem->FileManifestPath;
 						}
 					})
 					[
@@ -768,7 +763,7 @@ FReply SHotUpdatePackagingPanel::OnPackageClicked()
 	PatchConfig.PatchVersion = PackageConfig.VersionString;
 	PatchConfig.BaseVersion = PackageConfig.BasedOnVersion;
 	PatchConfig.Platform = PackageConfig.Platform;
-	PatchConfig.BaseManifestPath.FilePath = PackageConfig.BaseManifestPath;
+	PatchConfig.BaseFileManifestPath.FilePath = PackageConfig.BaseFileManifestPath;
 	PatchConfig.bIncludeDependencies = PackageConfig.bIncludeDependencies;
 	PatchConfig.OutputDirectory = PackageConfig.OutputDirectory;
 	PatchConfig.bSkipCook = SkipCookCheckBox.IsValid() && SkipCookCheckBox->IsChecked();
@@ -781,6 +776,7 @@ FReply SHotUpdatePackagingPanel::OnPackageClicked()
 	PatchConfig.IoStoreConfig.bEncryptIndex = EditorSettings->bDefaultEncryptIndex;
 	PatchConfig.IoStoreConfig.bEncryptContent = EditorSettings->bDefaultEncryptContent;
 	PatchConfig.IoStoreConfig.bUseIoStore = (PackageConfig.OutputFormat == EHotUpdateOutputFormat::IoStore);
+	PatchConfig.bSynchronousMode = false;
 
 	// 开始打包
 	bIsPackaging = true;
@@ -1052,8 +1048,8 @@ void SHotUpdatePackagingPanel::RefreshVersionSelectOptions()
 {
 	VersionSelectOptions.Empty();
 
-	UHotUpdateVersionManager* VersionManager = NewObject<UHotUpdateVersionManager>();
-	TArray<FHotUpdateVersionSelectItem> Versions = VersionManager->GetSelectableVersions(PackageConfig.Platform);
+	FHotUpdateVersionManager VersionManager;
+	TArray<FHotUpdateVersionSelectItem> Versions = VersionManager.GetSelectableVersions(PackageConfig.Platform);
 
 	for (const FHotUpdateVersionSelectItem& Version : Versions)
 	{
@@ -1069,13 +1065,13 @@ void SHotUpdatePackagingPanel::RefreshVersionSelectOptions()
 	{
 		SelectedVersion = VersionSelectOptions[0];
 		PackageConfig.BasedOnVersion = SelectedVersion->VersionString;
-		PackageConfig.BaseManifestPath = SelectedVersion->ManifestPath;
+		PackageConfig.BaseFileManifestPath = SelectedVersion->FileManifestPath;
 	}
 	else
 	{
 		SelectedVersion.Reset();
 		PackageConfig.BasedOnVersion.Empty();
-		PackageConfig.BaseManifestPath.Empty();
+		PackageConfig.BaseFileManifestPath.Empty();
 	}
 }
 

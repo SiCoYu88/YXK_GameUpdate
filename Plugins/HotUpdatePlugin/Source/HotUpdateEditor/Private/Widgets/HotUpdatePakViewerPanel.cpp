@@ -8,19 +8,15 @@
 #include "EditorStyleSet.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
-#include "Styling/CoreStyle.h"
 #include "Styling/AppStyle.h"
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
-#include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Dialogs/Dialogs.h"
@@ -279,7 +275,7 @@ TSharedRef<SWidget> SHotUpdatePakViewerPanel::CreateStatusBar()
 					return FText::Format(
 						LOCTEXT("PakStats", "文件数: {0} | 总大小: {1}"),
 						FText::AsNumber(CurrentFileCount),
-						FText::FromString(UHotUpdateDiffTool::FormatFileSize(CurrentTotalSize))
+						FText::FromString(FHotUpdateDiffTool::FormatFileSize(CurrentTotalSize))
 					);
 				})
 				.Font(FHotUpdateEditorStyle::GetSmallFont())
@@ -422,7 +418,7 @@ TSharedRef<ITableRow> SHotUpdatePakViewerPanel::OnGenerateContentListRow(TShared
 			.Padding(4, 2)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(UHotUpdateDiffTool::FormatFileSize(Entry.UncompressedSize)))
+				.Text(FText::FromString(FHotUpdateDiffTool::FormatFileSize(Entry.UncompressedSize)))
 				.Font(FHotUpdateEditorStyle::GetSmallFont())
 				.ColorAndOpacity(FHotUpdateEditorStyle::GetTextSecondaryColor())
 			]
@@ -434,7 +430,7 @@ TSharedRef<ITableRow> SHotUpdatePakViewerPanel::OnGenerateContentListRow(TShared
 			.Padding(4, 2)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(UHotUpdateDiffTool::FormatFileSize(Entry.CompressedSize)))
+				.Text(FText::FromString(FHotUpdateDiffTool::FormatFileSize(Entry.CompressedSize)))
 				.Font(FHotUpdateEditorStyle::GetSmallFont())
 				.ColorAndOpacity(Entry.bIsCompressed ? FHotUpdateEditorStyle::GetAddedColor() : FHotUpdateEditorStyle::GetTextSecondaryColor())
 			]

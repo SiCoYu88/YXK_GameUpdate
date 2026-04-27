@@ -10,7 +10,7 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "HotUpdateEditorTypes.h"
 
-class UHotUpdatePatchPackageBuilder;
+class FHotUpdatePatchPackageBuilder;
 class SProgressBar;
 
 /**
@@ -103,7 +103,7 @@ private:
 	FHotUpdatePackageConfig PackageConfig;
 
 	/** 更新包构建器 */
-	TObjectPtr<UHotUpdatePatchPackageBuilder> PatchPackageBuilder;
+	TSharedPtr<FHotUpdatePatchPackageBuilder> PatchPackageBuilder;
 
 	/** 是否正在打包 */
 	bool bIsPackaging;

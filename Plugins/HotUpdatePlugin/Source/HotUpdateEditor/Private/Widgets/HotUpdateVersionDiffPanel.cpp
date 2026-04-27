@@ -18,9 +18,7 @@
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSplitter.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Images/SThrobber.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Styling/CoreStyle.h"
@@ -303,8 +301,8 @@ FReply SHotUpdateVersionDiffPanel::OnLoadVersionsClicked()
 	}
 
 	// 在版本目录中查找 filemanifest.json
-	FString BaseManifestPath = UHotUpdateDiffTool::FindFileManifestPath(BaseVersionPath);
-	FString TargetManifestPath = UHotUpdateDiffTool::FindFileManifestPath(TargetVersionPath);
+	FString BaseManifestPath = FHotUpdateDiffTool::FindFileManifestPath(BaseVersionPath);
+	FString TargetManifestPath = FHotUpdateDiffTool::FindFileManifestPath(TargetVersionPath);
 
 	if (BaseManifestPath.IsEmpty())
 	{
@@ -319,8 +317,8 @@ FReply SHotUpdateVersionDiffPanel::OnLoadVersionsClicked()
 	}
 
 	// 基于 filemanifest.json 进行版本比较
-	UHotUpdateDiffTool* DiffTool = NewObject<UHotUpdateDiffTool>();
-	DiffReport = DiffTool->CompareManifests(BaseManifestPath, TargetManifestPath);
+	FHotUpdateDiffTool DiffTool;
+		DiffReport = DiffTool.CompareManifests(BaseManifestPath, TargetManifestPath);
 
 	GenerateTreeNodes();
 	bIsLoaded = true;
@@ -331,7 +329,7 @@ FReply SHotUpdateVersionDiffPanel::OnLoadVersionsClicked()
 		DiffReport.ModifiedAssets.Num(),
 		DiffReport.DeletedAssets.Num(),
 		DiffReport.UnchangedAssets.Num(),
-		*UHotUpdateDiffTool::FormatFileSize(DiffReport.GetTotalSizeDifference())
+		*FHotUpdateDiffTool::FormatFileSize(DiffReport.GetTotalSizeDifference())
 	);
 	StatisticsText->SetText(FText::FromString(StatsText));
 
@@ -393,7 +391,6 @@ FReply SHotUpdateVersionDiffPanel::OnExportReportClicked()
 				{
 					Writer->WriteObjectStart();
 					Writer->WriteValue(TEXT("path"), Diff.AssetPath);
-					Writer->WriteValue(TEXT("type"), Diff.AssetType);
 					Writer->WriteValue(TEXT("oldSize"), Diff.OldSize);
 					Writer->WriteValue(TEXT("newSize"), Diff.NewSize);
 					Writer->WriteValue(TEXT("oldHash"), Diff.OldHash);
@@ -587,7 +584,7 @@ const FSlateBrush* SHotUpdateVersionDiffPanel::GetTreeNodeIcon(TSharedPtr<FDiffT
 		return FAppStyle::GetBrush("ContentBrowser.AssetTreeFolderClosed");
 	}
 
-	return FAppStyle::GetBrush(UHotUpdateDiffTool::GetAssetIconName(Node->DiffInfo.AssetPath));
+	return FAppStyle::GetBrush(FHotUpdateDiffTool::GetAssetIconName(Node->DiffInfo.AssetPath));
 }
 
 FSlateColor SHotUpdateVersionDiffPanel::GetTreeNodeColor(TSharedPtr<FDiffTreeNode> Node) const
@@ -685,7 +682,6 @@ void SHotUpdateVersionDiffPanel::UpdateDetailsPanel(TSharedPtr<FDiffTreeNode> No
 
 	AddDetailRow(TEXT("名称"), Node->Name);
 	AddDetailRow(TEXT("完整路径"), Node->FullPath);
-	AddDetailRow(TEXT("类型"), Node->bIsFolder ? TEXT("文件夹") : Node->DiffInfo.AssetType);
 
 	if (!Node->bIsFolder)
 	{
@@ -700,13 +696,13 @@ void SHotUpdateVersionDiffPanel::UpdateDetailsPanel(TSharedPtr<FDiffTreeNode> No
 
 		if (Node->ChangeType != EHotUpdateFileChangeType::Added)
 		{
-			AddDetailRow(TEXT("原大小"), UHotUpdateDiffTool::FormatFileSize(Node->DiffInfo.OldSize));
+			AddDetailRow(TEXT("原大小"), FHotUpdateDiffTool::FormatFileSize(Node->DiffInfo.OldSize));
 			AddDetailRow(TEXT("原Hash"), Node->DiffInfo.OldHash);
 		}
 
 		if (Node->ChangeType != EHotUpdateFileChangeType::Deleted)
 		{
-			AddDetailRow(TEXT("新大小"), UHotUpdateDiffTool::FormatFileSize(Node->DiffInfo.NewSize));
+			AddDetailRow(TEXT("新大小"), FHotUpdateDiffTool::FormatFileSize(Node->DiffInfo.NewSize));
 			AddDetailRow(TEXT("新Hash"), Node->DiffInfo.NewHash);
 		}
 

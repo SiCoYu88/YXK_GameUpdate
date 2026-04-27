@@ -23,6 +23,10 @@
 		 * -manifest       基础版本Manifest文件路径 (热更包需要)
 		 * -shipping       是否为发布版本构建 (base 模式)
 		 * -skipbuild      是否跳过编译步骤 (base 模式，避免 Live Coding 冲突)
+		 * -minimal        启用最小包模式 (base 模式)
+		 * -whitelist      白名单目录，分号分隔 (如 /Game/UI;/Game/Startup)
+		 * -chunkstrategy  分包策略: None(不分包), Size(按大小分包)
+		 * -chunksize      分包大小，单位MB (默认256)
 		 * -help           显示帮助信息
 		 */
 UCLASS()
@@ -40,7 +44,7 @@ private:
 	bool ParseCommandLine(const FString& Params);
 
 	/** 显示帮助信息 */
-	void ShowHelp();
+	static void ShowHelp();
 
 	/** 执行完整基础版本打包（exe/apk） */
 	int32 ExecuteBasePackage();
@@ -49,10 +53,10 @@ private:
 	int32 ExecutePatchPackage();
 
 	/** 从命令行参数转换为平台枚举 */
-	EHotUpdatePlatform ParsePlatform(const FString& InPlatformStr);
+	static EHotUpdatePlatform ParsePlatform(const FString& InPlatformStr);
 
 	/** 从命令行参数转换为 Android 纹理格式枚举 */
-	EHotUpdateAndroidTextureFormat ParseTextureFormat(const FString& InFormatStr);
+	static EHotUpdateAndroidTextureFormat ParseTextureFormat(const FString& InFormatStr);
 
 private:
 	// 命令行参数
@@ -72,6 +76,7 @@ private:
 	bool bEnableMinimalPackage;         // 是否启用最小包模式
 	FString WhitelistDirectories;       // 必须包含的目录（分号分隔）
 	EHotUpdateChunkStrategy PatchChunkStrategy;  // 非首包资源分包策略
+	int32 PatchChunkSizeMB;             // 分包大小（MB）
 
 	// 全量热更新参数
 	bool bIncludeBaseContainers;    // 是否包含基础版本容器
