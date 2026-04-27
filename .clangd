@@ -8,6 +8,6 @@ CompileFlags:
 Diagnostics:
   # 有 compile_commands.json 后可以启用诊断，但 UE 宏可能仍产生误报
   # 如需完全抑制，取消下行注释：
-  # Suppress: ['*']
+  Suppress: ['*']
   UnusedIncludes: None
   MissingIncludes: None
