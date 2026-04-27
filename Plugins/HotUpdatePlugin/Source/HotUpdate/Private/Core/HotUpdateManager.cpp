@@ -479,7 +479,8 @@ bool UHotUpdateManager::ApplyUpdate()
 			// 加载 Asset-Pak Manifest 并初始化 AutoMountLoader
 			if (AssetPakMapping && AutoMountLoader && PakManager)
 			{
-				FString ManifestDir = Settings->GetLocalPakFullPath() / LatestVersion.ToString();
+				UHotUpdateSettings* AutoMountSettings = UHotUpdateSettings::Get();
+				FString ManifestDir = AutoMountSettings->GetLocalPakFullPath() / LatestVersion.ToString();
 
 				bool bManifestLoaded = AssetPakMapping->LoadManifest(ManifestDir);
 				if (bManifestLoaded)

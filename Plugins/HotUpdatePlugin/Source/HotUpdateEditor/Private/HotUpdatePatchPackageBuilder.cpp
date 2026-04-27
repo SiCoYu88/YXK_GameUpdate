@@ -515,7 +515,6 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 7.5 生成 Asset-Pak Manifest 和依赖信息
 	{
 		FString PaksDir = FPaths::Combine(OutputDir, TEXT("Paks"));
-		FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
 
 		bool bManifestGenerated = FHotUpdateAssetPakManifestGenerator::Generate(
 			PaksDir, OutputDir, CurrentConfig.PatchVersion, PlatformStr);

@@ -1,11 +1,13 @@
 CompileFlags:
-  # 抑制编译错误，避免因缺少 UE 引擎头文件路径导致的级联报红
+  # compile_commands.json 已由 UBT GenerateClangDatabase 生成
+  CompilationDatabase: .
   Add:
     - -Wno-everything
     - -ferror-limit=0
 
 Diagnostics:
-  # 关闭所有诊断（因为没有 compile_commands.json，clangd 无法正确解析 UE 代码）
+  # 有 compile_commands.json 后可以启用诊断，但 UE 宏可能仍产生误报
+  # 如需完全抑制，取消下行注释：
   # Suppress: ['*']
   UnusedIncludes: None
   MissingIncludes: None

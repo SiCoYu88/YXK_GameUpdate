@@ -830,7 +830,6 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 
 	// 3.5 生成 Asset-Pak Manifest 和依赖信息
 	{
-		FString HotUpdatePaksDir = FPaths::Combine(VersionDir, TEXT("Paks"));
 		FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
 
 		// 生成 asset_pak_manifest.json
