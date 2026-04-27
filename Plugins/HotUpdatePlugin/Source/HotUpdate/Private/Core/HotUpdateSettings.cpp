@@ -19,6 +19,8 @@ UHotUpdateSettings::UHotUpdateSettings()
 	, bAutoCleanupOldVersions(true)
 	, bAutoCheckOnStartup(true)
 	, bAutoDownload(true)
+	, bEnableAutoUnmountOnGC(true)
+	, AssetScanInterval(5.0f)
 	, bEnableMinimalPackage(false)
 	, bAllowHttpConnection(false)
 {

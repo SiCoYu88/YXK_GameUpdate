@@ -77,6 +77,19 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
 	bool bAutoDownload;
 
+	// == 资源自动卸载配置 ==
+
+	/// 是否启用 GC 驱动的 Pak 自动卸载
+	/// 启用后，系统会定期扫描从 Pak 加载的资源弱引用，当所有资源被 GC 回收后自动卸载 Pak。
+	/// 禁用则回退到纯手动 Release 模式。
+	UPROPERTY(Config, EditAnywhere, Category = "AutoUnmount", meta = (DisplayName = "Enable Auto Unmount On GC"))
+	bool bEnableAutoUnmountOnGC;
+
+	/// 弱引用扫描间隔（秒）
+	/// 定期检测从 Pak 加载的资源是否已被 GC 回收，设为 0 禁用自动扫描（仅依赖显式 Release）。
+	UPROPERTY(Config, EditAnywhere, Category = "AutoUnmount", meta = (ClampMin = "0", UIMin = "1", UIMax = "30", DisplayName = "Asset Scan Interval"))
+	float AssetScanInterval;
+
 	/// 获取本地 Pak 存储完整路径
 	FString GetLocalPakFullPath() const;
 

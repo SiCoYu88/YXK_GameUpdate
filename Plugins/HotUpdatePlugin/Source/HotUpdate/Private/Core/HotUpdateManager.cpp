@@ -115,6 +115,12 @@ void UHotUpdateManager::Deinitialize()
 		VersionCheckRequest.Reset();
 	}
 
+	// 停止资源弱引用扫描
+	if (AutoMountLoader)
+	{
+		AutoMountLoader->StopAssetScan();
+	}
+
 	if (Downloader)
 	{
 		Downloader->CancelDownload();
@@ -480,6 +486,9 @@ bool UHotUpdateManager::ApplyUpdate()
 				{
 					AssetPakMapping->LoadDependencies(ManifestDir);
 					AutoMountLoader->Initialize(PakManager, AssetPakMapping);
+
+					// 启动资源弱引用定时扫描（如果配置启用）
+					AutoMountLoader->StartAssetScan();
 
 					UE_LOG(LogHotUpdate, Log, TEXT("AutoMount system ready: %d assets, %d paks"),
 						AssetPakMapping->GetAssetCount(), AssetPakMapping->GetPakCount());

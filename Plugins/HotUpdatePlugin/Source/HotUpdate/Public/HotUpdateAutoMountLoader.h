@@ -84,6 +84,31 @@ public:
 	UFUNCTION(BlueprintPure, Category = "HotUpdate|AutoMount")
 	int32 GetActiveLoadCount() const { return ActiveLoads.Num(); }
 
+	// ============================================================
+	// 资源弱引用扫描接口
+	// ============================================================
+
+	/**
+	 * 启动定时资源弱引用扫描
+	 *
+	 * 读取 UHotUpdateSettings::AssetScanInterval，使用 FTSTicker 注册定期扫描回调。
+	 * 如果 bEnableAutoUnmountOnGC 为 false 或 AssetScanInterval 为 0，则不启动扫描。
+	 */
+	void StartAssetScan();
+
+	/**
+	 * 停止定时资源弱引用扫描
+	 */
+	void StopAssetScan();
+
+	/**
+	 * 检查扫描是否正在运行
+	 */
+	bool IsAssetScanRunning() const { return ScanTickerHandle.IsValid(); }
+
+protected:
+	virtual void BeginDestroy() override;
+
 private:
 	/**
 	 * 内部：Mount 指定资源所需的所有 Pak，返回实际 Mount 的 Pak 路径列表
@@ -94,6 +119,12 @@ private:
 	 * 内部：构建 Pak 完整本地路径
 	 */
 	FString BuildFullPakPath(const FString& RelativePakPath) const;
+
+	/**
+	 * Ticker 回调：定期扫描弱引用并触发自动卸载
+	 * @return true 保持 Ticker 持续运行
+	 */
+	bool OnScanTick(float DeltaTime);
 
 	/// PakManager 引用
 	UPROPERTY(Transient)
@@ -108,4 +139,7 @@ private:
 
 	/// StreamableManager（用于异步加载）
 	FStreamableManager StreamableManager;
+
+	/// 定时扫描的 Ticker 句柄
+	FTSTicker::FDelegateHandle ScanTickerHandle;
 };

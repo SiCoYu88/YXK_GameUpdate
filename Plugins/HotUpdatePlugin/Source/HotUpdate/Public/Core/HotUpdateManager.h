@@ -142,6 +142,10 @@ public:
 
 	/**
 	 * 释放自动挂载的资源引用（Unmount 关联 Pak）
+	 *
+	 * 作为显式释放的快速路径，立即递减引用计数。
+	 * 即使不调用此方法，当资源被 UE GC 回收后，
+	 * 定时扫描机制也会自动检测并卸载不再需要的 Pak。
 	 */
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|AutoMount")
 	void ReleaseAutoMountAsset(const FString& AssetPath);

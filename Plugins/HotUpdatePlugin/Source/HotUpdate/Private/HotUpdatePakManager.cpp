@@ -12,6 +12,79 @@
 #include "Async/Async.h"
 
 // ============================================================
+// FPakLoadedAssetTracker 实现
+// ============================================================
+
+void FPakLoadedAssetTracker::RegisterAsset(UObject* Asset, const FString& AssetPath, const FString& PakPath)
+{
+	// 避免重复注册相同 AssetPath
+	for (const FLoadedAsset& Existing : LoadedAssets)
+	{
+		if (Existing.AssetPath == AssetPath)
+		{
+			return;
+		}
+	}
+
+	LoadedAssets.Emplace(Asset, AssetPath, PakPath);
+	bHasEverTracked = true;
+}
+
+void FPakLoadedAssetTracker::UnregisterAsset(const FString& AssetPath)
+{
+	LoadedAssets.RemoveAll([&AssetPath](const FLoadedAsset& Entry)
+	{
+		return Entry.AssetPath == AssetPath;
+	});
+}
+
+int32 FPakLoadedAssetTracker::CleanupStaleEntries()
+{
+	int32 RemovedCount = LoadedAssets.RemoveAll([](const FLoadedAsset& Entry)
+	{
+		return !Entry.IsAssetAlive();
+	});
+
+	if (RemovedCount > 0)
+	{
+		UE_LOG(LogHotUpdate, Verbose, TEXT("[AssetTracker] CleanupStaleEntries: removed %d GC'd assets, %d remaining"),
+			RemovedCount, LoadedAssets.Num());
+	}
+
+	return RemovedCount;
+}
+
+bool FPakLoadedAssetTracker::AreAllAssetsReleased() const
+{
+	if (LoadedAssets.Num() == 0)
+	{
+		return bHasEverTracked; // 只有曾跟踪过资源才视为"全部释放"
+	}
+
+	for (const FLoadedAsset& Entry : LoadedAssets)
+	{
+		if (Entry.IsAssetAlive())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+int32 FPakLoadedAssetTracker::GetAliveAssetCount() const
+{
+	int32 Count = 0;
+	for (const FLoadedAsset& Entry : LoadedAssets)
+	{
+		if (Entry.IsAssetAlive())
+		{
+			Count++;
+		}
+	}
+	return Count;
+}
+
+// ============================================================
 // FScopedPakRef 实现
 // ============================================================
 
@@ -792,6 +865,133 @@ FPakMountInfo UHotUpdatePakManager::MakeMountInfo(const FString& Path, const FPa
 	Info.bIsRegistered = Record.bIsRegistered;
 	Info.PakSize = Record.Metadata.PakSize;
 	return Info;
+}
+
+// ============================================================
+// 资源弱引用跟踪
+// ============================================================
+
+void UHotUpdatePakManager::RegisterLoadedAsset(const FString& PakPath, UObject* Asset, const FString& AssetPath)
+{
+	if (!Asset)
+	{
+		return;
+	}
+
+	FString NormalizedPath = NormalizePakPath(PakPath);
+
+	FScopeLock Lock(&PakRecordsMutex);
+
+	FPakLoadedAssetTracker& Tracker = PakAssetTrackers.FindOrAdd(NormalizedPath);
+	Tracker.RegisterAsset(Asset, AssetPath, NormalizedPath);
+
+	UE_LOG(LogHotUpdate, Log, TEXT("[AssetTracker] Registered %s -> %s (tracked: %d)"),
+		*AssetPath, *NormalizedPath, Tracker.GetTotalAssetCount());
+}
+
+void UHotUpdatePakManager::UnregisterLoadedAsset(const FString& PakPath, const FString& AssetPath)
+{
+	FString NormalizedPath = NormalizePakPath(PakPath);
+
+	FScopeLock Lock(&PakRecordsMutex);
+
+	FPakLoadedAssetTracker* Tracker = PakAssetTrackers.Find(NormalizedPath);
+	if (Tracker)
+	{
+		Tracker->UnregisterAsset(AssetPath);
+
+		UE_LOG(LogHotUpdate, Log, TEXT("[AssetTracker] Unregistered %s from %s"),
+			*AssetPath, *NormalizedPath);
+	}
+}
+
+void UHotUpdatePakManager::ScanAndAutoUnmount()
+{
+	TArray<FString> PaksToUnmount;
+
+	{
+		FScopeLock Lock(&PakRecordsMutex);
+
+		int32 TotalTrackedPaks = 0;
+		int32 TotalAliveAssets = 0;
+
+		for (auto It = PakAssetTrackers.CreateIterator(); It; ++It)
+		{
+			const FString& PakPathKey = It->Key;
+			FPakLoadedAssetTracker& Tracker = It->Value;
+
+			TotalTrackedPaks++;
+
+			// 清理已 GC 的弱引用
+			Tracker.CleanupStaleEntries();
+
+			int32 AliveCount = Tracker.GetAliveAssetCount();
+			TotalAliveAssets += AliveCount;
+
+			// 检查是否所有资源都已释放
+			if (Tracker.AreAllAssetsReleased())
+			{
+				// 检查该 Pak 是否仍处于挂载状态
+				FPakMountRecord* Record = PakRecords.Find(PakPathKey);
+				if (Record && Record->bIsMounted && Record->RefCount > 0)
+				{
+					UE_LOG(LogHotUpdate, Log, TEXT("[AssetTracker] Scan: %s all assets released, auto-unmounting (RefCount: %d)"),
+						*PakPathKey, Record->RefCount);
+
+					PaksToUnmount.Add(PakPathKey);
+				}
+
+				// 清除跟踪器（该 Pak 的跟踪数据不再需要）
+				It.RemoveCurrent();
+			}
+		}
+
+		UE_LOG(LogHotUpdate, Verbose, TEXT("[AssetTracker] Scan complete: %d paks tracked, %d alive assets, %d paks to auto-unmount"),
+			TotalTrackedPaks, TotalAliveAssets, PaksToUnmount.Num());
+	}
+
+	// 在锁外执行 Unmount（避免死锁）
+	for (const FString& PakPath : PaksToUnmount)
+	{
+		// 通过循环调用 RequestUnmount 直到 RefCount 归零
+		int32 CurrentRefCount = GetRefCount(PakPath);
+		for (int32 i = 0; i < CurrentRefCount; i++)
+		{
+			RequestUnmount(PakPath);
+		}
+	}
+}
+
+int32 UHotUpdatePakManager::GetTrackedAssetCount(const FString& PakPath) const
+{
+	FString NormalizedPath = NormalizePakPath(PakPath);
+
+	FScopeLock Lock(&PakRecordsMutex);
+
+	const FPakLoadedAssetTracker* Tracker = PakAssetTrackers.Find(NormalizedPath);
+	return Tracker ? Tracker->GetAliveAssetCount() : 0;
+}
+
+TArray<FString> UHotUpdatePakManager::GetTrackedAssetPaths(const FString& PakPath) const
+{
+	TArray<FString> Result;
+	FString NormalizedPath = NormalizePakPath(PakPath);
+
+	FScopeLock Lock(&PakRecordsMutex);
+
+	const FPakLoadedAssetTracker* Tracker = PakAssetTrackers.Find(NormalizedPath);
+	if (Tracker)
+	{
+		for (const FLoadedAsset& Entry : Tracker->LoadedAssets)
+		{
+			if (Entry.IsAssetAlive())
+			{
+				Result.Add(Entry.AssetPath);
+			}
+		}
+	}
+
+	return Result;
 }
 
 // ============================================================

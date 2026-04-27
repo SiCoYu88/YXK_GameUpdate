@@ -9,6 +9,81 @@
 class UHotUpdatePakManager;
 
 // ============================================================
+// 资源弱引用跟踪类型
+// ============================================================
+
+/**
+ * 从 Pak 中加载的单个资源弱引用记录
+ *
+ * 持有资源的 TWeakObjectPtr，不会阻止 UE GC 回收资源。
+ * 当弱指针失效时表示资源已被 GC 回收。
+ */
+struct HOTUPDATE_API FLoadedAsset
+{
+	/// 加载的资源弱引用
+	TWeakObjectPtr<UObject> Asset;
+
+	/// 资源路径（用于日志和调试）
+	FString AssetPath;
+
+	/// 所属 Pak 路径（规范化后的完整路径）
+	FString PakPath;
+
+	/// 注册时间戳（用于调试和统计）
+	double RegisterTime = 0.0;
+
+	FLoadedAsset() = default;
+
+	FLoadedAsset(UObject* InAsset, const FString& InAssetPath, const FString& InPakPath)
+		: Asset(InAsset)
+		, AssetPath(InAssetPath)
+		, PakPath(InPakPath)
+		, RegisterTime(FPlatformTime::Seconds())
+	{
+	}
+
+	/// 检查资源是否仍然存活
+	bool IsAssetAlive() const { return Asset.IsValid(); }
+};
+
+/**
+ * 单个 Pak 的已加载资源跟踪器
+ *
+ * 维护从该 Pak 中加载出的所有资源的弱引用列表。
+ * 当列表中所有弱引用都失效时，该 Pak 可以被安全卸载。
+ */
+struct HOTUPDATE_API FPakLoadedAssetTracker
+{
+	/// 已加载的资源列表
+	TArray<FLoadedAsset> LoadedAssets;
+
+	/// 注册一个新加载的资源
+	void RegisterAsset(UObject* Asset, const FString& AssetPath, const FString& PakPath);
+
+	/// 移除指定资源的跟踪（用于显式 Release）
+	void UnregisterAsset(const FString& AssetPath);
+
+	/// 清理已失效的弱引用（资源已被 GC）
+	/// @return 清理掉的数量
+	int32 CleanupStaleEntries();
+
+	/// 检查是否所有资源都已被释放（弱引用全部失效）
+	bool AreAllAssetsReleased() const;
+
+	/// 获取仍存活的资源数
+	int32 GetAliveAssetCount() const;
+
+	/// 获取已注册的总资源数（含已失效）
+	int32 GetTotalAssetCount() const { return LoadedAssets.Num(); }
+
+	/// 是否有任何资源被注册过
+	bool HasEverTrackedAssets() const { return bHasEverTracked; }
+
+private:
+	bool bHasEverTracked = false;
+};
+
+// ============================================================
 // Asset-Pak 映射相关类型
 // ============================================================
 

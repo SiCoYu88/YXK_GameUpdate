@@ -6,6 +6,7 @@
 #include "HotUpdateAssetPakMapping.h"
 #include "Core/HotUpdateSettings.h"
 #include "Misc/Paths.h"
+#include "Containers/Ticker.h"
 
 void UHotUpdateAutoMountLoader::Initialize(UHotUpdatePakManager* InPakManager, UHotUpdateAssetPakMapping* InMapping)
 {
@@ -76,6 +77,15 @@ void UHotUpdateAutoMountLoader::AsyncLoadAsset(const FString& AssetPath, const F
 			if (Info)
 			{
 				Info->LoadedAsset = LoadedAsset;
+
+				// 注册弱引用跟踪到关联的 Pak
+				if (bSuccess && WeakThis->PakManager)
+				{
+					for (const FString& PakPath : Info->MountedPakPaths)
+					{
+						WeakThis->PakManager->RegisterLoadedAsset(PakPath, LoadedAsset, CapturedAssetPath);
+					}
+				}
 			}
 
 			UE_LOG(LogHotUpdate, Log, TEXT("[AutoMount] Async load %s: %s"),
@@ -123,6 +133,15 @@ UObject* UHotUpdateAutoMountLoader::SyncLoadAsset(const FString& AssetPath)
 		if (Info)
 		{
 			Info->LoadedAsset = LoadedAsset;
+
+			// 注册弱引用跟踪到关联的 Pak
+			if (PakManager)
+			{
+				for (const FString& PakPath : Info->MountedPakPaths)
+				{
+					PakManager->RegisterLoadedAsset(PakPath, LoadedAsset, AssetPath);
+				}
+			}
 		}
 
 		UE_LOG(LogHotUpdate, Log, TEXT("[AutoMount] Sync load success: %s"), *AssetPath);
@@ -151,6 +170,15 @@ void UHotUpdateAutoMountLoader::ReleaseAsset(const FString& AssetPath)
 
 	if (Info->RefCount <= 0)
 	{
+		// 先从 Pak 的弱引用跟踪中移除该资源
+		if (PakManager)
+		{
+			for (const FString& PakPath : Info->MountedPakPaths)
+			{
+				PakManager->UnregisterLoadedAsset(PakPath, AssetPath);
+			}
+		}
+
 		// 引用归零，Unmount 所有关联 Pak
 		if (PakManager)
 		{
@@ -248,6 +276,15 @@ void UHotUpdateAutoMountLoader::AsyncLoadAssets(const TArray<FString>& AssetPath
 					if (Info)
 					{
 						Info->LoadedAsset = Asset;
+
+						// 注册弱引用跟踪到关联的 Pak
+						if (WeakThis->PakManager)
+						{
+							for (const FString& PakPath : Info->MountedPakPaths)
+							{
+								WeakThis->PakManager->RegisterLoadedAsset(PakPath, Asset, AssetPath);
+							}
+						}
 					}
 				}
 				else
@@ -309,4 +346,69 @@ FString UHotUpdateAutoMountLoader::BuildFullPakPath(const FString& RelativePakPa
 	}
 
 	return RelativePakPath;
+}
+
+// ============================================================
+// 资源弱引用定时扫描
+// ============================================================
+
+void UHotUpdateAutoMountLoader::StartAssetScan()
+{
+	// 如果已在运行，先停止
+	StopAssetScan();
+
+	UHotUpdateSettings* Settings = UHotUpdateSettings::Get();
+	if (!Settings)
+	{
+		return;
+	}
+
+	// 检查是否启用
+	if (!Settings->bEnableAutoUnmountOnGC)
+	{
+		UE_LOG(LogHotUpdate, Log, TEXT("[AssetScan] Auto unmount on GC is disabled"));
+		return;
+	}
+
+	float Interval = Settings->AssetScanInterval;
+	if (Interval <= 0.0f)
+	{
+		UE_LOG(LogHotUpdate, Log, TEXT("[AssetScan] Scan interval is 0, auto scan disabled"));
+		return;
+	}
+
+	ScanTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &UHotUpdateAutoMountLoader::OnScanTick),
+		Interval
+	);
+
+	UE_LOG(LogHotUpdate, Log, TEXT("[AssetScan] Started asset scan with interval %.1f seconds"), Interval);
+}
+
+void UHotUpdateAutoMountLoader::StopAssetScan()
+{
+	if (ScanTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ScanTickerHandle);
+		ScanTickerHandle.Reset();
+
+		UE_LOG(LogHotUpdate, Log, TEXT("[AssetScan] Stopped asset scan"));
+	}
+}
+
+bool UHotUpdateAutoMountLoader::OnScanTick(float DeltaTime)
+{
+	if (PakManager)
+	{
+		PakManager->ScanAndAutoUnmount();
+	}
+
+	// 返回 true 保持 Ticker 持续运行
+	return true;
+}
+
+void UHotUpdateAutoMountLoader::BeginDestroy()
+{
+	StopAssetScan();
+	Super::BeginDestroy();
 }

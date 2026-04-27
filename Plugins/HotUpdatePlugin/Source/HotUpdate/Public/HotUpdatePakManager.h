@@ -223,6 +223,50 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "HotUpdate|Events")
 	FOnPaksAvailable OnPaksAvailable;
 
+	// ============================================================
+	// 资源弱引用跟踪接口
+	// ============================================================
+
+	/**
+	 * 注册已加载资源的弱引用跟踪
+	 *
+	 * 在指定 Pak 的 Tracker 中注册一个资源弱引用。
+	 * 当所有弱引用失效（被 GC 回收）时，Pak 可被自动卸载。
+	 * @param PakPath    Pak 文件路径（将被规范化）
+	 * @param Asset      加载的资源指针
+	 * @param AssetPath  资源路径（用于索引和日志）
+	 */
+	void RegisterLoadedAsset(const FString& PakPath, UObject* Asset, const FString& AssetPath);
+
+	/**
+	 * 移除指定资源的弱引用跟踪（显式 Release 时调用）
+	 *
+	 * @param PakPath    Pak 文件路径
+	 * @param AssetPath  资源路径
+	 */
+	void UnregisterLoadedAsset(const FString& PakPath, const FString& AssetPath);
+
+	/**
+	 * 扫描所有 Pak 的资源跟踪器，自动卸载全部资源已释放的 Pak
+	 *
+	 * 遍历 PakAssetTrackers：
+	 *  1. CleanupStaleEntries() 清理已 GC 的弱引用
+	 *  2. AreAllAssetsReleased() 检测是否全部释放
+	 *  3. 收集待卸载列表，在锁外批量 RequestUnmount
+	 */
+	void ScanAndAutoUnmount();
+
+	/**
+	 * 获取指定 Pak 中仍存活的跟踪资源数
+	 * @return 存活资源数；Pak 无跟踪记录返回 0
+	 */
+	int32 GetTrackedAssetCount(const FString& PakPath) const;
+
+	/**
+	 * 获取指定 Pak 中仍存活的资源路径列表（调试用）
+	 */
+	TArray<FString> GetTrackedAssetPaths(const FString& PakPath) const;
+
 	/// 解析 Pak 元数据
 	FHotUpdatePakMetadata ParsePakMetadata(const FString& PakPath);
 
@@ -266,6 +310,13 @@ private:
 
 	/** 待延迟卸载的路径列表 */
 	TSet<FString> PendingUnmounts;
+
+	/**
+	 * 每个 Pak 的已加载资源跟踪器
+	 * Key = 规范化 PakPath，Value = 该 Pak 的资源弱引用跟踪器
+	 * 与 PakRecords 共享 PakRecordsMutex 保护
+	 */
+	TMap<FString, FPakLoadedAssetTracker> PakAssetTrackers;
 
 	/** 保护 PakRecords 和 PendingUnmounts 的临界区 */
 	mutable FCriticalSection PakRecordsMutex;
