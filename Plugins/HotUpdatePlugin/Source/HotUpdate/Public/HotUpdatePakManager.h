@@ -16,13 +16,8 @@ class UHotUpdatePakManager;
  * 构造时调用 RequestMount，析构时调用 RequestUnmount，
  * 防止忘记释放引用导致 Pak 永不卸载。
  * 使用 TWeakObjectPtr 避免 Manager 被销毁后悬空引用。
- *
- * 用法：
- *   {
- *       FScopedPakRef Guard(PakManager, TEXT("/path/to/pak.pak"));
- *       if (Guard.IsValid()) { /* 使用 Pak 资源 */ }
- *   } // 自动释放
  */
+
 struct HOTUPDATE_API FScopedPakRef
 {
 	/** 构造 — 调用 RequestMount 获取引用 */

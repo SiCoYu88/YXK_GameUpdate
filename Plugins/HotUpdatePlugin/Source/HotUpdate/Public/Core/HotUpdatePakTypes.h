@@ -21,6 +21,9 @@ struct HOTUPDATE_API FHotUpdatePakMetadata
 	FString PakName;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
+	int32 ChunkId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	int64 PakSize;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
