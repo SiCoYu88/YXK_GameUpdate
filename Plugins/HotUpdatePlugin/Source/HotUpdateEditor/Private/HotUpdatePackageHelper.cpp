@@ -629,3 +629,131 @@ bool FHotUpdatePackageHelper::IsValidPackagePath(const FString& AssetPath)
 	FString LongPackageName;
 	return FPackageName::TryConvertFilenameToLongPackageName(AssetPath, LongPackageName);
 }
+
+// ==================== 资产类型判断函数实现 ====================
+
+bool FHotUpdatePackageHelper::IsUAssetExtension(const FString& Extension)
+{
+	return Extension == TEXT("uasset") || Extension == TEXT("umap");
+}
+
+bool FHotUpdatePackageHelper::IsUAssetFile(const FString& FilePath)
+{
+	FString Extension = FPaths::GetExtension(FilePath);
+	return IsUAssetExtension(Extension);
+}
+
+// ==================== 新增路径转换函数实现 ====================
+
+FString FHotUpdatePackageHelper::NormalizeAssetPath(const FString& Path)
+{
+	FString Result = Path;
+
+	// 去除前后空格
+	Result.TrimStartAndEndInline();
+
+	if (Result.IsEmpty())
+	{
+		return Result;
+	}
+
+	// 如果不以 / 开头，添加 /Game/ 前缀
+	if (!Result.StartsWith(TEXT("/")))
+	{
+		Result = TEXT("/Game/") + Result;
+	}
+
+	return Result;
+}
+
+FString FHotUpdatePackageHelper::VirtualPathToDiskPath(const FString& VirtualPath)
+{
+	FString Result = NormalizePathToForwardSlash(VirtualPath);
+
+	if (Result.StartsWith(TEXT("/Game/")))
+	{
+		// 虚拟路径 /Game/... 转换为项目 Content 目录
+		FString RelativePath = Result.RightChop(6); // 去掉 "/Game/"
+		Result = FPaths::ProjectContentDir() + RelativePath;
+		Result = FPaths::ConvertRelativePathToFull(Result);
+	}
+	else if (Result.StartsWith(TEXT("../../../")))
+	{
+		// Pak 挂载路径格式
+		FString ProjectName = FApp::GetProjectName();
+		FString Prefix = FString::Printf(TEXT("../../../%s/Content/"), *ProjectName);
+		if (Result.StartsWith(Prefix))
+		{
+			FString RelativePath = Result.RightChop(Prefix.Len());
+			Result = FPaths::ProjectContentDir() + RelativePath;
+			Result = FPaths::ConvertRelativePathToFull(Result);
+		}
+		else
+		{
+			// 其他 ../../../ 格式（如引擎路径），无法处理
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("VirtualPathToDiskPath: 无法识别的 Pak 挂载路径: %s"), *VirtualPath);
+			return TEXT("");
+		}
+	}
+	else if (FPaths::IsRelative(Result))
+	{
+		// 相对路径，相对于项目目录
+		Result = FPaths::ProjectDir() + Result;
+		Result = FPaths::ConvertRelativePathToFull(Result);
+	}
+	else
+	{
+		// 已经是绝对路径，直接使用
+		// 不做任何处理
+	}
+
+	Result.ReplaceCharInline('\\', '/');
+	return Result;
+}
+
+// ==================== 平台目录函数实现 ====================
+
+FString FHotUpdatePackageHelper::GetCookedPlatformDir(EHotUpdatePlatform Platform)
+{
+	FString PlatformStr;
+	switch (Platform)
+	{
+	case EHotUpdatePlatform::Windows: PlatformStr = TEXT("Windows"); break;
+	case EHotUpdatePlatform::Android: PlatformStr = TEXT("Android"); break;
+	case EHotUpdatePlatform::IOS:     PlatformStr = TEXT("IOS"); break;
+	default: PlatformStr = TEXT("Windows"); break;
+	}
+	return FPaths::ProjectSavedDir() / TEXT("Cooked") / PlatformStr;
+}
+
+FString FHotUpdatePackageHelper::GetCookedPlatformDir(EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat AndroidTextureFormat)
+{
+	FString PlatformDir;
+	switch (Platform)
+	{
+	case EHotUpdatePlatform::Windows: PlatformDir = TEXT("Windows"); break;
+	case EHotUpdatePlatform::Android:
+		{
+			PlatformDir = TEXT("Android");
+			if (AndroidTextureFormat != EHotUpdateAndroidTextureFormat::Multi)
+			{
+				FString TextureFormat;
+				switch (AndroidTextureFormat)
+				{
+				case EHotUpdateAndroidTextureFormat::ETC2: TextureFormat = TEXT("ETC2"); break;
+				case EHotUpdateAndroidTextureFormat::ASTC: TextureFormat = TEXT("ASTC"); break;
+				case EHotUpdateAndroidTextureFormat::DXT:  TextureFormat = TEXT("DXT");  break;
+				default: break;
+				}
+				if (!TextureFormat.IsEmpty())
+				{
+					PlatformDir = FString::Printf(TEXT("Android_%s"), *TextureFormat);
+				}
+			}
+		}
+		break;
+	case EHotUpdatePlatform::IOS: PlatformDir = TEXT("IOS"); break;
+	default: PlatformDir = TEXT("Windows"); break;
+	}
+	return FPaths::ProjectSavedDir() / TEXT("Cooked") / PlatformDir;
+}

@@ -4,6 +4,7 @@
 #include "HotUpdateEditor.h"
 #include "HotUpdateEditorStyle.h"
 #include "HotUpdateDiffTool.h"
+#include "HotUpdateUtils.h"
 #include "EditorStyleSet.h"
 #include "Framework/Application/SlateApplication.h"
 #include "DesktopPlatformModule.h"
@@ -329,7 +330,7 @@ FReply SHotUpdateVersionDiffPanel::OnLoadVersionsClicked()
 		DiffReport.ModifiedAssets.Num(),
 		DiffReport.DeletedAssets.Num(),
 		DiffReport.UnchangedAssets.Num(),
-		*FHotUpdateDiffTool::FormatFileSize(DiffReport.GetTotalSizeDifference())
+		*HotUpdateUtils::FormatFileSize(DiffReport.GetTotalSizeDifference())
 	);
 	StatisticsText->SetText(FText::FromString(StatsText));
 
@@ -696,13 +697,13 @@ void SHotUpdateVersionDiffPanel::UpdateDetailsPanel(TSharedPtr<FDiffTreeNode> No
 
 		if (Node->ChangeType != EHotUpdateFileChangeType::Added)
 		{
-			AddDetailRow(TEXT("原大小"), FHotUpdateDiffTool::FormatFileSize(Node->DiffInfo.OldSize));
+			AddDetailRow(TEXT("原大小"), HotUpdateUtils::FormatFileSize(Node->DiffInfo.OldSize));
 			AddDetailRow(TEXT("原Hash"), Node->DiffInfo.OldHash);
 		}
 
 		if (Node->ChangeType != EHotUpdateFileChangeType::Deleted)
 		{
-			AddDetailRow(TEXT("新大小"), FHotUpdateDiffTool::FormatFileSize(Node->DiffInfo.NewSize));
+			AddDetailRow(TEXT("新大小"), HotUpdateUtils::FormatFileSize(Node->DiffInfo.NewSize));
 			AddDetailRow(TEXT("新Hash"), Node->DiffInfo.NewHash);
 		}
 

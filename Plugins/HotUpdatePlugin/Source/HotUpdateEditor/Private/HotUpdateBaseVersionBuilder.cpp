@@ -468,9 +468,8 @@ FString FHotUpdateBaseVersionBuilder::GenerateUATCommand()
 		FString HotUpdatePaksDir = FHotUpdateVersionManager::GetVersionDir(CurrentConfig.VersionString, CurrentConfig.Platform, CurrentConfig.AndroidTextureFormat) / TEXT("Paks");
 		FPaths::NormalizeDirectoryName(HotUpdatePaksDir);
 		Params += FString::Printf(TEXT(" -HotUpdateOutputDir=\"%s\""), *HotUpdatePaksDir);
-		// Write config to temp file for cooking process to read
-		// 白名单通过 MinimalPackageConfig.json 传递给 Cook 进程，不需要通过 UAT 命令行传递
-		WriteMinimalPackageConfig();
+			// 配置已在 ExecuteBuildInternal 中写入 MinimalPackageConfig.json
+			// 白名单和 ChunkMapping 通过该配置文件传递给 Cook 进程，不需要通过 UAT 命令行传递
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("MinimalPackage mode: ScriptsForProject=%s, HotUpdateOutputDir=%s"), *ProjectPath, *HotUpdatePaksDir);
 	}

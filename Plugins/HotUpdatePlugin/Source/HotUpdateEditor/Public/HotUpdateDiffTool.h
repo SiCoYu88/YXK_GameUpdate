@@ -31,11 +31,6 @@ public:
 	static FName GetAssetIconName(const FString& AssetPath);
 
 	/**
-	 * 格式化文件大小
-	 */
-	static FString FormatFileSize(int64 Size);
-
-	/**
 	 * 在版本目录中查找 filemanifest.json 文件路径
 	 * 查找顺序：1) VersionDir/Windows/filemanifest.json 2) VersionDir/filemanifest.json
 	 * 如果找不到 filemanifest.json，回退查找 manifest.json

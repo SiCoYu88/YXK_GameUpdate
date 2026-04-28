@@ -2,6 +2,7 @@
 
 #include "HotUpdateDiffTool.h"
 #include "HotUpdateEditor.h"
+#include "HotUpdateUtils.h"
 #include "Core/HotUpdateFileUtils.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/FileManager.h"
@@ -37,106 +38,51 @@ FHotUpdateDiffReport FHotUpdateDiffTool::CompareManifests(
 		return Report;
 	}
 
-	// 收集所有路径
-	TSet<FString> AllPaths;
+	// 将 ManifestEntry 转换为 Hash/Size TMap 以使用公共差异计算函数
+	TMap<FString, FString> BaseHashes;
+	TMap<FString, int64> BaseSizes;
+	TMap<FString, FString> TargetHashes;
+	TMap<FString, int64> TargetSizes;
+	TArray<FString> TargetPaths;
+
 	for (const auto& Pair : BaseEntries)
 	{
-		AllPaths.Add(Pair.Key);
+		BaseHashes.Add(Pair.Key, Pair.Value.FileHash);
+		BaseSizes.Add(Pair.Key, Pair.Value.FileSize);
 	}
+
 	for (const auto& Pair : TargetEntries)
 	{
-		AllPaths.Add(Pair.Key);
+		TargetHashes.Add(Pair.Key, Pair.Value.FileHash);
+		TargetSizes.Add(Pair.Key, Pair.Value.FileSize);
+		TargetPaths.Add(Pair.Key);
 	}
 
-	// 比较差异
-	for (const FString& Path : AllPaths)
+	// 使用公共差异计算函数
+	TArray<FString> ChangedAssets;
+	HotUpdateUtils::CalculateAssetDiff(TargetPaths, TargetHashes, TargetSizes, BaseHashes, BaseSizes, ChangedAssets, Report);
+
+	// 更新差异描述为友好格式（使用公共 FormatFileSize）
+	for (FHotUpdateAssetDiff& Diff : Report.AddedAssets)
 	{
-		bool bInBase = BaseEntries.Contains(Path);
-		bool bInTarget = TargetEntries.Contains(Path);
-
-		FHotUpdateAssetDiff Diff;
-		Diff.AssetPath = Path;
-
-		if (!bInBase && bInTarget)
-		{
-			const FHotUpdateManifestEntry& Entry = TargetEntries[Path];
-			Diff.ChangeType = EHotUpdateFileChangeType::Added;
-			Diff.NewSize = Entry.FileSize;
-			Diff.NewHash = Entry.FileHash;
-			Diff.ChangeDescription = FString::Printf(TEXT("新增资源 (%s)"), *FormatFileSize(Diff.NewSize));
-			Report.AddedAssets.Add(Diff);
-		}
-		else if (bInBase && !bInTarget)
-		{
-			const FHotUpdateManifestEntry& Entry = BaseEntries[Path];
-			Diff.ChangeType = EHotUpdateFileChangeType::Deleted;
-			Diff.OldSize = Entry.FileSize;
-			Diff.OldHash = Entry.FileHash;
-			Diff.ChangeDescription = FString::Printf(TEXT("删除资源 (%s)"), *FormatFileSize(Diff.OldSize));
-			Report.DeletedAssets.Add(Diff);
-		}
-		else if (bInBase && bInTarget)
-		{
-			const FHotUpdateManifestEntry& BaseEntry = BaseEntries[Path];
-			const FHotUpdateManifestEntry& TargetEntry = TargetEntries[Path];
-
-			if (BaseEntry.FileHash != TargetEntry.FileHash)
-			{
-				Diff.ChangeType = EHotUpdateFileChangeType::Modified;
-				Diff.OldSize = BaseEntry.FileSize;
-				Diff.OldHash = BaseEntry.FileHash;
-				Diff.NewSize = TargetEntry.FileSize;
-				Diff.NewHash = TargetEntry.FileHash;
-	
-				int64 SizeDiff = Diff.NewSize - Diff.OldSize;
-				FString SizeDiffStr = SizeDiff >= 0
-					? FString::Printf(TEXT("+%s"), *FormatFileSize(SizeDiff))
-					: FString::Printf(TEXT("-%s"), *FormatFileSize(-SizeDiff));
-
-				Diff.ChangeDescription = FString::Printf(TEXT("已修改 (大小变化: %s)"), *SizeDiffStr);
-				Report.ModifiedAssets.Add(Diff);
-			}
-			else
-			{
-				Diff.ChangeType = EHotUpdateFileChangeType::Unchanged;
-				Diff.ChangeDescription = TEXT("未变更");
-				Report.UnchangedAssets.Add(Diff);
-			}
-		}
+		Diff.ChangeDescription = FString::Printf(TEXT("新增资源 (%s)"), *HotUpdateUtils::FormatFileSize(Diff.NewSize));
+	}
+	for (FHotUpdateAssetDiff& Diff : Report.DeletedAssets)
+	{
+		Diff.ChangeDescription = FString::Printf(TEXT("删除资源 (%s)"), *HotUpdateUtils::FormatFileSize(Diff.OldSize));
+	}
+	for (FHotUpdateAssetDiff& Diff : Report.ModifiedAssets)
+	{
+		int64 SizeDiff = Diff.NewSize - Diff.OldSize;
+		FString SizeDiffStr = SizeDiff >= 0
+			? FString::Printf(TEXT("+%s"), *HotUpdateUtils::FormatFileSize(SizeDiff))
+			: FString::Printf(TEXT("-%s"), *HotUpdateUtils::FormatFileSize(-SizeDiff));
+		Diff.ChangeDescription = FString::Printf(TEXT("已修改 (大小变化: %s)"), *SizeDiffStr);
 	}
 
-	// 从 manifest JSON 中提取版本信息
-	auto ExtractVersionFromManifest = [](const FString& ManifestPath) -> FString {
-		FString JsonString;
-		if (!FFileHelper::LoadFileToString(JsonString, *ManifestPath)) return TEXT("");
-
-		TSharedPtr<FJsonObject> JsonObject;
-		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-		if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid()) return TEXT("");
-
-		// 新格式：version.version
-		const TSharedPtr<FJsonObject>* VersionObj;
-		if (JsonObject->TryGetObjectField(TEXT("version"), VersionObj))
-		{
-			if (VersionObj->Get()->HasField(TEXT("version")))
-			{
-				return VersionObj->Get()->GetStringField(TEXT("version"));
-			}
-		}
-		// 旧格式：versionInfo.versionString
-		const TSharedPtr<FJsonObject>* VersionInfoObj;
-		if (JsonObject->TryGetObjectField(TEXT("versionInfo"), VersionInfoObj))
-		{
-			if (VersionInfoObj->Get()->HasField(TEXT("versionString")))
-			{
-				return VersionInfoObj->Get()->GetStringField(TEXT("versionString"));
-			}
-		}
-		return TEXT("");
-	};
-
-	FString BaseVersionStr = ExtractVersionFromManifest(BaseManifestPath);
-	FString TargetVersionStr = ExtractVersionFromManifest(TargetManifestPath);
+	// 使用公共函数提取版本信息
+	FString BaseVersionStr = HotUpdateUtils::ExtractVersionFromManifest(BaseManifestPath);
+	FString TargetVersionStr = HotUpdateUtils::ExtractVersionFromManifest(TargetManifestPath);
 
 	if (!BaseVersionStr.IsEmpty()) Report.BaseVersion = BaseVersionStr;
 	if (!TargetVersionStr.IsEmpty()) Report.TargetVersion = TargetVersionStr;
@@ -246,26 +192,6 @@ bool FHotUpdateDiffTool::ParseManifestFile(
 
 	UE_LOG(LogHotUpdateEditor, Warning, TEXT("ParseManifestFile: No 'files' or 'assets' array found in '%s'"), *ManifestPath);
 	return false;
-}
-
-FString FHotUpdateDiffTool::FormatFileSize(int64 Size)
-{
-	if (Size < 1024)
-	{
-		return FString::Printf(TEXT("%lld B"), Size);
-	}
-	else if (Size < 1024 * 1024)
-	{
-		return FString::Printf(TEXT("%.2f KB"), Size / 1024.0);
-	}
-	else if (Size < 1024 * 1024 * 1024)
-	{
-		return FString::Printf(TEXT("%.2f MB"), Size / (1024.0 * 1024.0));
-	}
-	else
-	{
-		return FString::Printf(TEXT("%.2f GB"), Size / (1024.0 * 1024.0 * 1024.0));
-	}
 }
 
 FString FHotUpdateDiffTool::FindFileManifestPath(const FString& VersionDirectory)

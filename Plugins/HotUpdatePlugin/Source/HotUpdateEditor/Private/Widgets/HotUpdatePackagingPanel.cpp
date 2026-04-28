@@ -7,6 +7,7 @@
 #include "HotUpdateNotificationHelper.h"
 #include "HotUpdatePatchPackageBuilder.h"
 #include "HotUpdateVersionManager.h"
+#include "HotUpdateUtils.h"
 #include "Styling/AppStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "DesktopPlatformModule.h"
@@ -886,22 +887,8 @@ bool SHotUpdatePackagingPanel::IsPackagingEnabled() const
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem)
 {
-	FText PlatformText;
-	switch (*InItem)
-	{
-	case EHotUpdatePlatform::Windows:
-		PlatformText = LOCTEXT("PlatformWindows", "Windows");
-		break;
-	case EHotUpdatePlatform::Android:
-		PlatformText = LOCTEXT("PlatformAndroid", "Android");
-		break;
-	case EHotUpdatePlatform::IOS:
-		PlatformText = LOCTEXT("PlatformIOS", "iOS");
-		break;
-	}
-
 	return SNew(STextBlock)
-		.Text(PlatformText)
+		.Text(HotUpdateUtils::GetPlatformDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -919,33 +906,15 @@ FText SHotUpdatePackagingPanel::GetSelectedPlatformText() const
 {
 	if (SelectedPlatform.IsValid())
 	{
-		switch (*SelectedPlatform)
-		{
-		case EHotUpdatePlatform::Windows:
-			return LOCTEXT("PlatformWindows", "Windows");
-		case EHotUpdatePlatform::Android:
-			return LOCTEXT("PlatformAndroid", "Android");
-		case EHotUpdatePlatform::IOS:
-			return LOCTEXT("PlatformIOS", "iOS");
-		}
+		return HotUpdateUtils::GetPlatformDisplayName(*SelectedPlatform);
 	}
-	return LOCTEXT("PlatformWindows", "Windows");
+	return HotUpdateUtils::GetPlatformDisplayName(EHotUpdatePlatform::Windows);
 }
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::GenerateChunkStrategyComboBoxItem(TSharedPtr<EHotUpdateChunkStrategy> InItem)
 {
-	FText StrategyText;
-	switch (*InItem)
-	{
-	case EHotUpdateChunkStrategy::None:
-		StrategyText = LOCTEXT("StrategyNone", "不分包");
-		break;
-	case EHotUpdateChunkStrategy::Size:
-		StrategyText = LOCTEXT("StrategySize", "按大小分包");
-		break;
-	}
 	return SNew(STextBlock)
-		.Text(StrategyText)
+		.Text(HotUpdateUtils::GetChunkStrategyDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -963,38 +932,15 @@ FText SHotUpdatePackagingPanel::GetSelectedChunkStrategyText() const
 {
 	if (SelectedChunkStrategy.IsValid())
 	{
-		switch (*SelectedChunkStrategy)
-		{
-		case EHotUpdateChunkStrategy::None:
-			return LOCTEXT("StrategyNone", "不分包");
-		case EHotUpdateChunkStrategy::Size:
-			return LOCTEXT("StrategySize", "按大小分包");
-	
-		}
+		return HotUpdateUtils::GetChunkStrategyDisplayName(*SelectedChunkStrategy);
 	}
-	return LOCTEXT("StrategySize", "按大小分包");
+	return HotUpdateUtils::GetChunkStrategyDisplayName(EHotUpdateChunkStrategy::Size);
 }
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem)
 {
-	FText FormatText;
-	switch (*InItem)
-	{
-	case EHotUpdateAndroidTextureFormat::ETC2:
-		FormatText = LOCTEXT("TextureFormatETC2", "ETC2");
-		break;
-	case EHotUpdateAndroidTextureFormat::ASTC:
-		FormatText = LOCTEXT("TextureFormatASTC", "ASTC");
-		break;
-	case EHotUpdateAndroidTextureFormat::DXT:
-		FormatText = LOCTEXT("TextureFormatDXT", "DXT");
-		break;
-	case EHotUpdateAndroidTextureFormat::Multi:
-		FormatText = LOCTEXT("TextureFormatMulti", "Multi");
-		break;
-	}
 	return SNew(STextBlock)
-		.Text(FormatText)
+		.Text(HotUpdateUtils::GetTextureFormatDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -1012,19 +958,9 @@ FText SHotUpdatePackagingPanel::GetSelectedAndroidTextureFormatText() const
 {
 	if (SelectedAndroidTextureFormat.IsValid())
 	{
-		switch (*SelectedAndroidTextureFormat)
-		{
-		case EHotUpdateAndroidTextureFormat::ETC2:
-			return LOCTEXT("TextureFormatETC2", "ETC2");
-		case EHotUpdateAndroidTextureFormat::ASTC:
-			return LOCTEXT("TextureFormatASTC", "ASTC");
-		case EHotUpdateAndroidTextureFormat::DXT:
-			return LOCTEXT("TextureFormatDXT", "DXT");
-		case EHotUpdateAndroidTextureFormat::Multi:
-			return LOCTEXT("TextureFormatMulti", "Multi");
-		}
+		return HotUpdateUtils::GetTextureFormatDisplayName(*SelectedAndroidTextureFormat);
 	}
-	return LOCTEXT("TextureFormatETC2", "ETC2");
+	return HotUpdateUtils::GetTextureFormatDisplayName(EHotUpdateAndroidTextureFormat::ETC2);
 }
 
 EVisibility SHotUpdatePackagingPanel::GetAndroidTextureFormatVisibility() const

@@ -321,36 +321,16 @@ void FHotUpdateCustomPackageBuilder::UpdateProgress(const FString& Stage, const 
 	FHotUpdatePackageProgress ProgressCopy;
 	{
 		FScopeLock Lock(&ProgressCriticalSection);
-		CurrentProgress.CurrentStage= Stage;
-		CurrentProgress.CurrentFile = CurrentFile;
-		CurrentProgress.ProcessedFiles = ProcessedFiles;
-		CurrentProgress.TotalFiles = TotalFiles;
-		CurrentProgress.bIsComplete = (ProcessedFiles >= TotalFiles && TotalFiles > 0);
-
-		// 计算进度百分比
-		CurrentProgress.ProgressPercent = TotalFiles > 0 ? static_cast<float>(ProcessedFiles) / TotalFiles * 100.0f : 0.0f;
-
-		// 设置阶段描述
-		CurrentProgress.StageDescription = FText::FromString(Stage);
-
+		HotUpdateProgressHelper::UpdateProgressData(CurrentProgress, Stage, CurrentFile, ProcessedFiles, TotalFiles);
 		ProgressCopy = CurrentProgress;
 	}
 
-	// 同步模式下直接广播
 	if (CurrentConfig.bSynchronousMode)
 	{
-		OnProgress.Broadcast(ProgressCopy);
+		HotUpdateProgressHelper::BroadcastProgressSync(ProgressCopy, OnProgress);
 	}
 	else
 	{
-		// 异步模式下通过 AsyncTask 在游戏线程广播
-		TWeakPtr<FHotUpdateCustomPackageBuilder> WeakBuilder(AsShared());
-		AsyncTask(ENamedThreads::GameThread, [WeakBuilder, ProgressCopy]()
-		{
-			if (TSharedPtr<FHotUpdateCustomPackageBuilder> PinnedBuilder = WeakBuilder.Pin(); PinnedBuilder.IsValid())
-			{
-				PinnedBuilder->OnProgress.Broadcast(ProgressCopy);
-			}
-		});
+		HotUpdateProgressHelper::BroadcastProgressAsync(ProgressCopy, OnProgress);
 	}
 }

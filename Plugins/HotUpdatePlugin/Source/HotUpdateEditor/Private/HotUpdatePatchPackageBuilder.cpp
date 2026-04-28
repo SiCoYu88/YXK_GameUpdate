@@ -3,10 +3,10 @@
 #include "HotUpdatePatchPackageBuilder.h"
 #include "HotUpdatePackageHelper.h"
 #include "HotUpdateAssetFilter.h"
+#include "HotUpdateUtils.h"
 #include "Core/HotUpdateFileUtils.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateIoStoreBuilder.h"
-#include "HotUpdateUtils.h"
 #include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateVersionManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -36,7 +36,9 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		Result.ErrorMessage = ErrorMessage;
 		return Result;
 	}
-	
+
+	// 设置构建状态
+	bIsBuilding = true;
 	bIsCancelled = false;
 
 	// 编译项目：确保 Cook 使用最新的游戏代码
@@ -100,26 +102,15 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("加载了基础版本 %d 个资产, %d 个非资产"),
 		BaseManifestData.AssetHashes.Num(), BaseManifestData.NonAssetHashes.Num());
 
-	// 从 manifest 中读取实际版本号作为 BaseVersion
-	FString ActualBaseVersion = CurrentConfig.BaseVersion;
-	FString ManifestContent;
-	if (FFileHelper::LoadFileToString(ManifestContent, *CurrentConfig.BaseFileManifestPath.FilePath))
+	// 使用公共函数从 Manifest 中提取版本号
+	FString ActualBaseVersion = HotUpdateUtils::ExtractVersionFromManifest(CurrentConfig.BaseFileManifestPath.FilePath);
+	if (ActualBaseVersion.IsEmpty())
 	{
-		TSharedPtr<FJsonObject> ManifestObj;
-		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
-		if (FJsonSerializer::Deserialize(Reader, ManifestObj) && ManifestObj.IsValid())
-		{
-			const TSharedPtr<FJsonObject>* VersionObj;
-			if (ManifestObj->TryGetObjectField(TEXT("version"), VersionObj))
-			{
-				FString ManifestVersion;
-				if (VersionObj->Get()->TryGetStringField(TEXT("version"), ManifestVersion))
-				{
-					ActualBaseVersion = ManifestVersion;
-					UE_LOG(LogHotUpdateEditor, Log, TEXT("从 Manifest 更新 BaseVersion 为: %s"), *ActualBaseVersion);
-				}
-			}
-		}
+		ActualBaseVersion = CurrentConfig.BaseVersion;
+	}
+	else
+	{
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("从 Manifest 更新 BaseVersion 为: %s"), *ActualBaseVersion);
 	}
 
 	// 2. 收集当前资源
@@ -132,41 +123,20 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		bIsBuilding = false;
 		return Result;
 	}
-	
-		// 2. 收集源文件路径（分开处理资产和非资产）
-		TArray<FString> AssetSourcePaths;      // UE 资产源文件路径
-		TArray<FString> NonAssetSourcePaths;   // 非资产源文件路径（如 .txt）
 
-		for (const FString& AssetPath : CurrentConfig.AssetPaths)
+		// 2. 收集源文件路径（使用辅助函数）
+		TArray<FString> AssetSourcePaths;
+		TArray<FString> NonAssetSourcePaths;
+		FString CollectError;
+		if (!CollectSourceFilePaths(AssetSourcePaths, NonAssetSourcePaths, CollectError))
 		{
-			const FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
-			if (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath))
-			{
-				FString AbsolutePath = FPaths::ConvertRelativePathToFull(SourcePath);
-				FPaths::NormalizeFilename(AbsolutePath);
-				AssetSourcePaths.Add(AbsolutePath);
-			}
-			else
-			{
-				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过源文件不存在的资产: %s -> %s"), *AssetPath, *SourcePath);
-			}
+			Result.bSuccess = false;
+			Result.ErrorMessage = TEXT("没有可打包的资源文件");
+			bIsBuilding = false;
+			return Result;
 		}
 
-		for (const FString& FilePath : CurrentConfig.NonAssetPaths)
-		{
-			if (FPaths::FileExists(*FilePath))
-			{
-				FString AbsolutePath = FPaths::ConvertRelativePathToFull(FilePath);
-				FPaths::NormalizeFilename(AbsolutePath);
-				NonAssetSourcePaths.Add(AbsolutePath);
-			}
-			else
-			{
-				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过源文件不存在的非资产文件: %s"), *FilePath);
-			}
-		}
-
-		// 3. 计算当前资源 Hash 和 Size（分开计算）
+		// 3. 计算当前资源 Hash 和 Size
 		TMap<FString, FString> CurrentAssetHashes;      // UE 资产 Hash
 		TMap<FString, int64> CurrentAssetSizes;         // UE 资产 Size
 		TMap<FString, FString> CurrentNonAssetHashes;   // 非资产文件 Hash
@@ -421,6 +391,7 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		// UE 资产：调用 FilePathToLongPackageName（返回 Long Package Name）
 		// 非资产：调用 FilePathToContentMountPath（返回 Pak 内部路径）
 		TArray<FString> VirtualPackagePaths;
+		VirtualPackagePaths.Reserve(ChangedAssetPaths.Num() + ChangedNonAssetPaths.Num());
 
 		// 转换 UE 资产路径
 		for (const FString& AbsolutePath : ChangedAssetPaths)
@@ -467,12 +438,6 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		PatchSize = IoStoreResult.ContainerSize;
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("Patch 容器创建成功: %s, 大小 %lld 字节"), *PatchUtocPath, PatchSize);
-	}else
-	{
-		Result.bSuccess = false;
-		Result.ErrorMessage = TEXT("没有有效的资源文件");
-		bIsBuilding = false;
-		return Result;
 	}
 
 	Result.PatchUtocPath = PatchUtocPath;
@@ -801,70 +766,11 @@ bool FHotUpdatePatchPackageBuilder::ComputeDiff(
 {
 	UE_LOG(LogHotUpdateEditor, Display, TEXT("ComputeDiff: CurrentAssets.Num=%d, CurrentHashes.Num=%d, BaseHashes.Num=%d"), CurrentAssets.Num(), CurrentHashes.Num(), BaseHashes.Num());
 
-	// 收集所有路径
-	TSet<FString> AllPaths;
-	for (const auto& Pair : BaseHashes) AllPaths.Add(Pair.Key);
-	for (const FString& Path : CurrentAssets) AllPaths.Add(Path);
+	// 使用公共差异计算函数
+	HotUpdateUtils::CalculateAssetDiff(CurrentAssets, CurrentHashes, CurrentSizes, BaseHashes, BaseSizes, OutChangedAssets, OutReport);
 
-	UE_LOG(LogHotUpdateEditor, Display, TEXT("ComputeDiff: AllPaths.Num=%d (去重后)"), AllPaths.Num());
-
-	for (const FString& Path : AllPaths)
-	{
-		const bool bInBase = BaseHashes.Contains(Path);
-		const bool bInCurrent = CurrentHashes.Contains(Path);
-
-		FHotUpdateAssetDiff Diff;
-		Diff.AssetPath = Path;
-
-		if (!bInBase && bInCurrent)
-		{
-			// 新增资源
-			Diff.ChangeType = EHotUpdateFileChangeType::Added;
-			Diff.NewHash = CurrentHashes[Path];
-			Diff.NewSize = CurrentSizes.Contains(Path) ? CurrentSizes[Path] : 0;
-			Diff.ChangeDescription = FString::Printf(TEXT("新增资源 (%lld bytes)"), Diff.NewSize);
-			OutReport.AddedAssets.Add(Diff);
-			OutChangedAssets.Add(Path);
-		}
-		else if (bInBase && !bInCurrent)
-		{
-			// 删除资源
-			Diff.ChangeType = EHotUpdateFileChangeType::Deleted;
-			Diff.OldHash = BaseHashes[Path];
-			Diff.OldSize = BaseSizes.Contains(Path) ? BaseSizes[Path] : 0;
-			Diff.ChangeDescription = FString::Printf(TEXT("删除资源 (%lld bytes)"), Diff.OldSize);
-			OutReport.DeletedAssets.Add(Diff);
-		}
-		else if (bInBase && bInCurrent)
-		{
-			if (BaseHashes[Path] != CurrentHashes[Path])
-			{
-				// 修改资源
-				Diff.ChangeType = EHotUpdateFileChangeType::Modified;
-				Diff.OldHash = BaseHashes[Path];
-				Diff.NewHash = CurrentHashes[Path];
-				Diff.OldSize = BaseSizes.Contains(Path) ? BaseSizes[Path] : 0;
-				Diff.NewSize = CurrentSizes.Contains(Path) ? CurrentSizes[Path] : 0;
-				int64 SizeDiff = Diff.NewSize - Diff.OldSize;
-				FString SizeDiffStr = SizeDiff >= 0
-					? FString::Printf(TEXT("+%lld"), SizeDiff)
-					: FString::Printf(TEXT("%lld"), SizeDiff);
-				Diff.ChangeDescription = FString::Printf(TEXT("修改资源 (大小变化: %s bytes)"), *SizeDiffStr);
-				OutReport.ModifiedAssets.Add(Diff);
-				OutChangedAssets.Add(Path);
-			}
-			else
-			{
-				// 未变更
-				Diff.ChangeType = EHotUpdateFileChangeType::Unchanged;
-				Diff.OldHash = BaseHashes[Path];
-				Diff.NewHash = CurrentHashes[Path];
-				Diff.OldSize = BaseSizes.Contains(Path) ? BaseSizes[Path] : 0;
-				Diff.NewSize = CurrentSizes.Contains(Path) ? CurrentSizes[Path] : 0;
-				OutReport.UnchangedAssets.Add(Diff);
-			}
-		}
-	}
+	UE_LOG(LogHotUpdateEditor, Display, TEXT("ComputeDiff: Added=%d, Modified=%d, Deleted=%d, Unchanged=%d"), 
+		OutReport.AddedAssets.Num(), OutReport.ModifiedAssets.Num(), OutReport.DeletedAssets.Num(), OutReport.UnchangedAssets.Num());
 
 	return true;
 }
@@ -877,9 +783,6 @@ bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 	const TArray<FHotUpdateContainerInfo>& BaseContainers) const
 {
 	TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
-
-	// Manifest 版本
-	RootObject->SetNumberField(TEXT("manifestVersion"), 4); // 升级版本号，支持链式 Patch
 
 	// 包类型
 	RootObject->SetNumberField(TEXT("packageKind"), static_cast<int32>(EHotUpdatePackageKind::Patch));
@@ -1003,7 +906,6 @@ bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 	FString FileManifestPath = FPaths::Combine(FPaths::GetPath(ManifestPath), TEXT("filemanifest.json"));
 
 	TSharedPtr<FJsonObject> FileManifestObj = MakeShareable(new FJsonObject);
-	FileManifestObj->SetNumberField(TEXT("manifestVersion"), 4);
 	FileManifestObj->SetNumberField(TEXT("packageKind"), static_cast<int32>(EHotUpdatePackageKind::Patch));
 	FileManifestObj->SetObjectField(TEXT("version"), VersionInfo);
 	FileManifestObj->SetStringField(TEXT("baseVersion"), CurrentConfig.BaseVersion);
@@ -1096,156 +998,18 @@ void FHotUpdatePatchPackageBuilder::UpdateProgress(
 	FHotUpdatePackageProgress ProgressCopy;
 	{
 		FScopeLock Lock(&ProgressCriticalSection);
-		CurrentProgress.CurrentStage = Stage;
-		CurrentProgress.CurrentFile = CurrentFile;
-		CurrentProgress.ProcessedFiles = ProcessedFiles;
-		CurrentProgress.TotalFiles = TotalFiles;
-		CurrentProgress.bIsComplete = (ProcessedFiles >= TotalFiles && TotalFiles > 0);
-
-		// 计算进度百分比
-		CurrentProgress.ProgressPercent = TotalFiles > 0 ? (float)ProcessedFiles / TotalFiles * 100.0f : 0.0f;
-		// 设置阶段描述
-		CurrentProgress.StageDescription = FText::FromString(Stage);
-
+		HotUpdateProgressHelper::UpdateProgressData(CurrentProgress, Stage, CurrentFile, ProcessedFiles, TotalFiles);
 		ProgressCopy = CurrentProgress;
 	}
 
-	// 同步模式下直接广播
 	if (CurrentConfig.bSynchronousMode)
 	{
-		OnProgress.Broadcast(ProgressCopy);
+		HotUpdateProgressHelper::BroadcastProgressSync(ProgressCopy, OnProgress);
 	}
 	else
 	{
-		// 异步模式下通过 AsyncTask 在游戏线程广播
-		TWeakPtr<FHotUpdatePatchPackageBuilder> WeakBuilder(AsShared());
-		AsyncTask(ENamedThreads::GameThread, [WeakBuilder, ProgressCopy]()
-		{
-			TSharedPtr<FHotUpdatePatchPackageBuilder> PinnedBuilder = WeakBuilder.Pin();
-			if (PinnedBuilder.IsValid())
-			{
-				PinnedBuilder->OnProgress.Broadcast(ProgressCopy);
-			}
-		});
+		HotUpdateProgressHelper::BroadcastProgressAsync(ProgressCopy, OnProgress);
 	}
-}
-
-
-// === 新增静态辅助函数实现 ===
-
-FString FHotUpdatePatchPackageBuilder::ExtractVersionFromManifest(const FString& ManifestPath)
-{
-	FString ManifestContent;
-	if (!FFileHelper::LoadFileToString(ManifestContent, *ManifestPath))
-	{
-		return TEXT("");
-	}
-
-	TSharedPtr<FJsonObject> ManifestObj;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
-	if (!FJsonSerializer::Deserialize(Reader, ManifestObj) || !ManifestObj.IsValid())
-	{
-		return TEXT("");
-	}
-
-	const TSharedPtr<FJsonObject>* VersionObj;
-	if (ManifestObj->TryGetObjectField(TEXT("version"), VersionObj))
-	{
-		FString ManifestVersion;
-		if (VersionObj->Get()->TryGetStringField(TEXT("version"), ManifestVersion))
-		{
-			return ManifestVersion;
-		}
-	}
-
-	return TEXT("");
-}
-
-bool FHotUpdatePatchPackageBuilder::CalculateHashesForPaths(
-	const TArray<FString>& SourcePaths,
-	TMap<FString, FString>& OutHashes,
-	TMap<FString, int64>& OutSizes,
-	FString& OutErrorMessage,
-	const std::atomic<bool>& CancelFlag)
-{
-	for (int32 i = 0; i < SourcePaths.Num(); i++)
-	{
-		if (CancelFlag)
-		{
-			OutErrorMessage = TEXT("构建已取消");
-			return false;
-		}
-
-		const FString& SourcePath = SourcePaths[i];
-		if (FPaths::FileExists(*SourcePath))
-		{
-			OutHashes.Add(SourcePath, UHotUpdateFileUtils::CalculateFileHash(SourcePath));
-			OutSizes.Add(SourcePath, IFileManager::Get().FileSize(*SourcePath));
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过不存在的文件: %s"), *SourcePath);
-		}
-	}
-	return true;
-}
-
-bool FHotUpdatePatchPackageBuilder::ParseContainerFromJson(
-	const TSharedPtr<FJsonObject>& ContainerObj,
-	FHotUpdateContainerInfo& OutInfo,
-	const FString& DefaultVersion)
-{
-	if (!ContainerObj.IsValid())
-	{
-		return false;
-	}
-
-	// 兼容 ChunkName 和 containerName
-	if (ContainerObj->HasField(TEXT("ChunkName")))
-	{
-		OutInfo.ContainerName = ContainerObj->GetStringField(TEXT("ChunkName"));
-	}
-	else if (ContainerObj->HasField(TEXT("containerName")))
-	{
-		OutInfo.ContainerName = ContainerObj->GetStringField(TEXT("containerName"));
-	}
-	else
-	{
-		return false;
-	}
-
-	// IoStore 格式字段
-	ContainerObj->TryGetStringField(TEXT("utocPath"), OutInfo.UtocPath);
-	ContainerObj->TryGetNumberField(TEXT("utocSize"), OutInfo.UtocSize);
-	ContainerObj->TryGetStringField(TEXT("utocHash"), OutInfo.UtocHash);
-
-	// 传统 Pak 格式字段（兼容）
-	if (OutInfo.UtocPath.IsEmpty() && ContainerObj->HasField(TEXT("pakPath")))
-	{
-		OutInfo.UtocPath = ContainerObj->GetStringField(TEXT("pakPath"));
-		ContainerObj->TryGetNumberField(TEXT("pakSize"), OutInfo.UtocSize);
-		ContainerObj->TryGetStringField(TEXT("pakHash"), OutInfo.UtocHash);
-	}
-
-	// Ucas 文件信息
-	if (ContainerObj->HasField(TEXT("ucasPath")))
-	{
-		OutInfo.UcasPath = ContainerObj->GetStringField(TEXT("ucasPath"));
-		OutInfo.UcasSize = (int64)ContainerObj->GetNumberField(TEXT("ucasSize"));
-		OutInfo.UcasHash = ContainerObj->GetStringField(TEXT("ucasHash"));
-	}
-
-	// 版本号
-	if (ContainerObj->HasField(TEXT("version")))
-	{
-		OutInfo.Version = ContainerObj->GetStringField(TEXT("version"));
-	}
-	else
-	{
-		OutInfo.Version = DefaultVersion;
-	}
-
-	return true;
 }
 
 void FHotUpdatePatchPackageBuilder::SplitHashesByAssetType(
@@ -1346,146 +1110,6 @@ bool FHotUpdatePatchPackageBuilder::CollectSourceFilePaths(
 	}
 
 	return OutAssetSourcePaths.Num() > 0 || OutNonAssetSourcePaths.Num() > 0;
-}
-
-bool FHotUpdatePatchPackageBuilder::CreatePatchContainer(
-	const TArray<FString>& ChangedAssetPaths,
-	const TArray<FString>& ChangedNonAssetPaths,
-	const FString& OutputDir,
-	FString& OutPatchUtocPath,
-	FString& OutPatchUcasPath,
-	int64& OutPatchSize,
-	FString& OutErrorMessage)
-{
-	FHotUpdateIoStoreBuilder IoStoreBuilder;
-
-	FHotUpdateIoStoreConfig IoStoreConfig = CurrentConfig.IoStoreConfig;
-	IoStoreConfig.bUseIoStore = false;
-	IoStoreConfig.ContainerName = FString::Printf(TEXT("Patch_%s_P"), *CurrentConfig.PatchVersion);
-
-	FString PaksDir = FPaths::Combine(OutputDir, TEXT("Paks"));
-	IPlatformFile::GetPlatformPhysical().CreateDirectoryTree(*PaksDir);
-
-	FString PatchOutputPath = FPaths::Combine(PaksDir, IoStoreConfig.ContainerName);
-
-	// 将绝对路径转换为虚拟包路径
-	TArray<FString> VirtualPackagePaths;
-
-	for (const FString& AbsolutePath : ChangedAssetPaths)
-	{
-		FString VirtualPath = FHotUpdatePackageHelper::FilePathToLongPackageName(AbsolutePath);
-		if (!VirtualPath.IsEmpty())
-		{
-			VirtualPackagePaths.Add(VirtualPath);
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("无法转换资产路径: %s"), *AbsolutePath);
-		}
-	}
-
-	for (const FString& AbsolutePath : ChangedNonAssetPaths)
-	{
-		FString VirtualPath = FHotUpdatePackageHelper::FilePathToContentMountPath(AbsolutePath);
-		if (!VirtualPath.IsEmpty())
-		{
-			VirtualPackagePaths.Add(VirtualPath);
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("无法转换非资产路径: %s"), *AbsolutePath);
-		}
-	}
-
-	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
-	FHotUpdateIoStoreResult IoStoreResult = IoStoreBuilder.BuildIoStoreContainer(VirtualPackagePaths, PatchOutputPath, IoStoreConfig, CookedPlatformDir);
-
-	if (!IoStoreResult.bSuccess)
-	{
-		OutErrorMessage = FString::Printf(TEXT("Patch 容器创建失败: %s"), *IoStoreResult.ErrorMessage);
-		return false;
-	}
-
-	OutPatchUtocPath = IoStoreResult.UtocPath;
-	OutPatchUcasPath = IoStoreResult.UcasPath;
-	OutPatchSize = IoStoreResult.ContainerSize;
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("Patch 容器创建成功: %s, 大小 %lld 字节"), *OutPatchUtocPath, OutPatchSize);
-	return true;
-}
-
-
-bool FHotUpdatePatchPackageBuilder::LoadPatchContainersFromManifest(
-	const FString& ManifestPath,
-	const FString& DefaultVersion,
-	TArray<FHotUpdateContainerInfo>& OutContainers)
-{
-	FString BaseManifestJson;
-	if (!FFileHelper::LoadFileToString(BaseManifestJson, *ManifestPath))
-	{
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> BaseManifestObj;
-	TSharedRef<TJsonReader<>> BaseReader = TJsonReaderFactory<>::Create(BaseManifestJson);
-	if (!FJsonSerializer::Deserialize(BaseReader, BaseManifestObj) || !BaseManifestObj.IsValid())
-	{
-		return false;
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* ContainersArray = nullptr;
-	bool bFound = BaseManifestObj->TryGetArrayField(TEXT("chunks"), ContainersArray);
-	if (!bFound)
-	{
-		bFound = BaseManifestObj->TryGetArrayField(TEXT("containers"), ContainersArray);
-	}
-
-	if (bFound && ContainersArray)
-	{
-		for (const TSharedPtr<FJsonValue>& ContainerValue : *ContainersArray)
-		{
-			TSharedPtr<FJsonObject> ContainerObj = ContainerValue->AsObject();
-			if (!ContainerObj.IsValid()) continue;
-
-			// 只保留 patch 类型的容器
-			FString ContainerType;
-			if (ContainerObj->TryGetStringField(TEXT("containerType"), ContainerType) && !ContainerType.StartsWith(TEXT("patch")))
-			{
-				continue;
-			}
-
-			FHotUpdateContainerInfo Info;
-			if (ParseContainerFromJson(ContainerObj, Info, DefaultVersion))
-			{
-				Info.ContainerType = EHotUpdateContainerType::Patch;
-				OutContainers.Add(Info);
-			}
-		}
-
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("从 Manifest 加载了 %d 个 patch 容器引用"), OutContainers.Num());
-	}
-
-	return OutContainers.Num() > 0;
-}
-
-void FHotUpdatePatchPackageBuilder::RegisterPatchVersion(
-	const FString& OutputDir,
-	const FString& PatchUtocPath,
-	const FHotUpdateDiffReport& DiffReport)
-{
-	FHotUpdateVersionManager VersionManager;
-
-	FHotUpdateEditorVersionInfo VersionInfo;
-	VersionInfo.VersionString = CurrentConfig.PatchVersion;
-	VersionInfo.PackageKind = EHotUpdatePackageKind::Patch;
-	VersionInfo.BaseVersion = CurrentConfig.BaseVersion;
-	VersionInfo.Platform = CurrentConfig.Platform;
-	VersionInfo.CreatedTime = FDateTime::Now();
-	VersionInfo.FileManifestPath = FPaths::Combine(OutputDir, TEXT("filemanifest.json"));
-	VersionInfo.UtocPath = PatchUtocPath;
-	VersionInfo.AssetCount = DiffReport.AddedAssets.Num() + DiffReport.ModifiedAssets.Num() + DiffReport.UnchangedAssets.Num();
-
-	VersionManager.RegisterVersion(VersionInfo);
 }
 
 

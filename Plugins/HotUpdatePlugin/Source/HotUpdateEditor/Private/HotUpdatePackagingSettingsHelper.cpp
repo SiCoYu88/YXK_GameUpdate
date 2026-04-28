@@ -210,23 +210,7 @@ void FHotUpdatePackagingSettingsHelper::FilterEditorContent(TArray<FString>& Ass
 
 FString FHotUpdatePackagingSettingsHelper::NormalizeAssetPath(const FString& Path)
 {
-	FString Result = Path;
-
-	// 去除前后空格
-	Result.TrimStartAndEndInline();
-
-	if (Result.IsEmpty())
-	{
-		return Result;
-	}
-
-	// 如果不以 / 开头，添加 /Game/ 前缀
-	if (!Result.StartsWith(TEXT("/")))
-	{
-		Result = TEXT("/Game/") + Result;
-	}
-
-	return Result;
+	return FHotUpdatePackageHelper::NormalizeAssetPath(Path);
 }
 
 bool FHotUpdatePackagingSettingsHelper::IsEditorContent(const FString& AssetPath)

@@ -75,6 +75,43 @@ public:
 	 */
 	static FString GetAssetPakMountPath(const FString& AssetPath);
 
+	/**
+	 * 规范化资源路径为 Long Package Name 格式
+	 * - 去除前后空格
+	 * - 不以 / 开头时自动添加 /Game/ 前缀
+	 * @param Path 输入路径（可能是相对路径如 "Maps/Start" 或虚拟路径如 "/Game/Maps/Start"）
+	 * @return 规范化的虚拟路径（如 "/Game/Maps/Start"）
+	 */
+	static FString NormalizeAssetPath(const FString& Path);
+
+	/**
+	 * 将虚拟路径转换为磁盘绝对路径（用于非资产文件）
+	 * 支持的输入格式：
+	 *   - /Game/... -> 项目 Content 目录
+	 *   - ../../../{ProjectName}/Content/... -> 项目 Content 目录
+	 *   - 相对路径 -> 相对于项目目录
+	 *   - 绝对路径 -> 直接返回
+	 * @param VirtualPath 虚拟路径（如 "/Game/Setting/txt_pak.txt"）
+	 * @return 磁盘绝对路径，无法识别时返回空字符串
+	 */
+	static FString VirtualPathToDiskPath(const FString& VirtualPath);
+
+	// ==================== 资产类型判断函数 ====================
+
+	/**
+	 * 判断文件扩展名是否是 UE 资产格式
+	 * @param Extension 文件扩展名（不含点，如 "uasset"、"umap"）
+	 * @return 是否是 UE 资产扩展名
+	 */
+	static bool IsUAssetExtension(const FString& Extension);
+
+	/**
+	 * 判断文件路径是否是 UE 资产文件（根据扩展名）
+	 * @param FilePath 文件路径（可以是虚拟路径或磁盘路径）
+	 * @return 是否是 UE 资产文件
+	 */
+	static bool IsUAssetFile(const FString& FilePath);
+
 	// ==================== 辅助判断函数 ====================
 
 	/** 是否是外部资产（ExternalActors/ExternalObjects/Script/Memory 包） */
@@ -82,6 +119,23 @@ public:
 
 	/** 判断路径是否是有效的 UE Package（可以被 Cook） */
 	static bool IsValidPackagePath(const FString& AssetPath);
+
+	// ==================== 平台目录函数 ====================
+
+	/**
+	 * 获取 Cooked 平台目录路径（Saved/Cooked/{PlatformName}）
+	 * @param Platform 平台枚举值
+	 * @return Cooked 平台目录的完整路径
+	 */
+	static FString GetCookedPlatformDir(EHotUpdatePlatform Platform);
+
+	/**
+	 * 获取 Cooked 平台目录路径（考虑 Android 纹理格式后缀，如 Android_ASTC）
+	 * @param Platform 平台枚举值
+	 * @param AndroidTextureFormat Android 纹理格式（仅 Android 平台有效）
+	 * @return Cooked 平台目录的完整路径
+	 */
+	static FString GetCookedPlatformDir(EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat AndroidTextureFormat);
 
 private:
 	/** 规范化路径分隔符，统一使用正斜杠 */

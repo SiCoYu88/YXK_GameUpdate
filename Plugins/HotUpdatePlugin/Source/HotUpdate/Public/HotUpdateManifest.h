@@ -14,10 +14,6 @@ struct HOTUPDATE_API FHotUpdateManifest
 {
 	GENERATED_BODY()
 
-	/// Manifest 版本（2 = 支持基础包/更新包）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	int32 ManifestVersion;
-
 	/// 包类型（基础包/更新包）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	EHotUpdatePackageKind PackageKind;
@@ -39,8 +35,7 @@ struct HOTUPDATE_API FHotUpdateManifest
 	TArray<FHotUpdateContainerInfo> Containers;
 
 	FHotUpdateManifest()
-		: ManifestVersion(2)
-		, PackageKind(EHotUpdatePackageKind::Base)
+		: PackageKind(EHotUpdatePackageKind::Base)
 	{
 	}
 };

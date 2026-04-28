@@ -18,9 +18,6 @@ bool UHotUpdateManifestParser::ParseFromJson(const FString& JsonString, FHotUpda
 		return false;
 	}
 
-	// 解析 manifestVersion
-	JsonObject->TryGetNumberField(TEXT("manifestVersion"), OutManifest.ManifestVersion);
-
 	// 解析 packageKind（整数→枚举：0=Base, 1=Patch）
 	double PackageKindValue = 0;
 	if (JsonObject->TryGetNumberField(TEXT("packageKind"), PackageKindValue))
@@ -124,9 +121,6 @@ bool UHotUpdateManifestParser::SaveToFile(const FString& FilePath, const FHotUpd
 FString UHotUpdateManifestParser::ToJsonString(const FHotUpdateManifest& Manifest)
 {
 	TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
-
-	// manifestVersion
-	JsonObject->SetNumberField(TEXT("manifestVersion"), Manifest.ManifestVersion);
 
 	// packageKind（枚举→整数：Base=0, Patch=1）
 	JsonObject->SetNumberField(TEXT("packageKind"),

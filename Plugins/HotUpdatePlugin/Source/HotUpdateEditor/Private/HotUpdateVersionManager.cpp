@@ -252,11 +252,20 @@ bool FHotUpdateVersionManager::LoadVersionRegistry()
 			Info.PackageKind = static_cast<EHotUpdatePackageKind>(VersionObj->GetIntegerField(TEXT("packageKind")));
 			Info.BaseVersion = VersionObj->GetStringField(TEXT("baseVersion"));
 
-			int32 PlatformIndex = VersionObj->GetIntegerField(TEXT("platform"));
-			Info.Platform = static_cast<EHotUpdatePlatform>(PlatformIndex);
+				int32 PlatformIndex = VersionObj->GetIntegerField(TEXT("platform"));
+				// 边界验证：确保平台索引在有效范围内
+				if (PlatformIndex >= 0 && PlatformIndex <= 2)  // EHotUpdatePlatform: Windows=0, Android=1, IOS=2
+				{
+					Info.Platform = static_cast<EHotUpdatePlatform>(PlatformIndex);
+				}
+				else
+				{
+					UE_LOG(LogHotUpdateEditor, Warning, TEXT("无效的平台索引 %d，使用默认值 Windows"), PlatformIndex);
+					Info.Platform = EHotUpdatePlatform::Windows;
+				}
 
-			FString CreatedTimeStr = VersionObj->GetStringField(TEXT("createdTime"));
-			FDateTime::ParseIso8601(*CreatedTimeStr, Info.CreatedTime);
+				FString CreatedTimeStr = VersionObj->GetStringField(TEXT("createdTime"));
+				FDateTime::ParseIso8601(*CreatedTimeStr, Info.CreatedTime);
 
 			Info.FileManifestPath = VersionObj->GetStringField(TEXT("fileManifestPath"));
 			Info.UtocPath = VersionObj->GetStringField(TEXT("utocPath"));

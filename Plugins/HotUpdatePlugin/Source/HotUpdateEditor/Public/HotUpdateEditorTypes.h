@@ -829,6 +829,73 @@ enum class EHotUpdateAndroidTextureFormat : uint8
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPackageProgressDelegate, const FHotUpdatePackageProgress&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPatchPackageCompleteDelegate, const FHotUpdatePatchPackageResult&);
 
+/**
+ * 打包进度辅助函数
+ * 提供进度更新和广播的公共逻辑
+ */
+namespace HotUpdateProgressHelper
+{
+	/**
+	 * 更新进度数据
+	 * @param OutProgress 输出进度结构（会被更新）
+	 * @param Stage 当前阶段
+	 * @param CurrentFile 当前处理文件
+	 * @param ProcessedFiles 已处理文件数
+	 * @param TotalFiles 总文件数
+	 * @param ProcessedBytes 已处理字节数（可选）
+	 * @param TotalBytes 总字节数（可选）
+	 */
+	inline void UpdateProgressData(
+		FHotUpdatePackageProgress& OutProgress,
+		const FString& Stage,
+		const FString& CurrentFile,
+		int32 ProcessedFiles,
+		int32 TotalFiles,
+		int64 ProcessedBytes = 0,
+		int64 TotalBytes = 0)
+	{
+		OutProgress.CurrentStage = Stage;
+		OutProgress.CurrentFile = CurrentFile;
+		OutProgress.ProcessedFiles = ProcessedFiles;
+		OutProgress.TotalFiles = TotalFiles;
+		OutProgress.ProcessedBytes = ProcessedBytes;
+		OutProgress.TotalBytes = TotalBytes;
+		OutProgress.bIsComplete = (ProcessedFiles >= TotalFiles && TotalFiles > 0);
+		OutProgress.ProgressPercent = TotalFiles > 0 ? static_cast<float>(ProcessedFiles) / TotalFiles * 100.0f : 0.0f;
+		OutProgress.StageDescription = FText::FromString(Stage);
+	}
+
+	/**
+	 * 广播进度（同步模式）
+	 * @param Progress 进度数据
+	 * @param OnProgressDelegate 进度委托
+	 */
+	inline void BroadcastProgressSync(
+		const FHotUpdatePackageProgress& Progress,
+		FOnPackageProgressDelegate& OnProgressDelegate)
+	{
+		OnProgressDelegate.Broadcast(Progress);
+	}
+
+		/**
+		 * 广播进度（异步模式，在游戏线程执行）
+		 * 注意：此函数通过值捕获进度和委托，确保异步执行时数据安全
+		 * @param Progress 进度数据
+		 * @param OnProgressDelegate 进度委托引用
+		 */
+		inline void BroadcastProgressAsync(
+			const FHotUpdatePackageProgress& Progress,
+			FOnPackageProgressDelegate& OnProgressDelegate)
+		{
+			// 值捕获：避免异步执行时引用悬空
+			FOnPackageProgressDelegate DelegateCopy = OnProgressDelegate;
+			AsyncTask(ENamedThreads::GameThread, [DelegateCopy, Progress]()
+			{
+				DelegateCopy.Broadcast(Progress);
+			});
+		}
+}
+
 
 /**
  * 输出格式

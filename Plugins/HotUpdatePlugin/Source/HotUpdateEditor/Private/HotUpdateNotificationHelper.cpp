@@ -61,30 +61,4 @@ void FHotUpdateNotificationHelper::ShowErrorNotification(const FText& Message)
         NotificationItem->SetCompletionState(SNotificationItem::CS_Fail);
     }
 }
-
-TSharedPtr<SNotificationItem> FHotUpdateNotificationHelper::ShowProgressNotification(const FText& Message, const FSimpleDelegate& CancelDelegate)
-{
-    FNotificationInfo Info(Message);
-    Info.bFireAndForget = false;
-    Info.ExpireDuration = 0.0f;
-
-    if (CancelDelegate.IsBound())
-    {
-        Info.ButtonDetails.Add(FNotificationButtonInfo(
-            LOCTEXT("Cancel", "取消"),
-            LOCTEXT("CancelTooltip", "取消当前打包操作"),
-            CancelDelegate,
-            SNotificationItem::ECompletionState::CS_Pending
-        ));
-    }
-
-    TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-    if (NotificationItem.IsValid())
-    {
-        NotificationItem->SetCompletionState(SNotificationItem::CS_Pending);
-    }
-
-    return NotificationItem;
-}
-
 #undef LOCTEXT_NAMESPACE

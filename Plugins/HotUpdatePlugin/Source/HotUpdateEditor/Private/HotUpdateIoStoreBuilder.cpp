@@ -208,10 +208,17 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 	FString& OutErrorMessage)
 {
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
-	FString ResponseContent;
 
-	OutValidFileCount = 0;
-	OutTotalSize = 0;
+		// 预估响应内容大小，预分配内存提升性能
+		// 每个资产条目约 200 字节（路径 + 压缩标记），配套文件可能增加 3 倍
+		constexpr int32 EstimatedBytesPerAsset = 200;
+		constexpr int32 EstimatedBytesPerCompanion = 60;
+		int32 EstimatedSize = AssetPaths.Num() * (EstimatedBytesPerAsset + EstimatedBytesPerCompanion * 3);
+		FString ResponseContent;
+		ResponseContent.Reserve(EstimatedSize);
+
+		OutValidFileCount = 0;
+		OutTotalSize = 0;
 
 	int32 TotalAssets = AssetPaths.Num();
 	UpdateProgress(TEXT("准备资源"), TEXT(""), 0, TotalAssets, 0, 0);
@@ -231,12 +238,11 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 			return false;
 		}
 
-		// 内联 IsUAsset 检查：区分 UE 资产和 Non-asset 文件
-		FString Extension = FPaths::GetExtension(AssetPath);
-		bool bIsUAsset = false;
-		if (Extension.IsEmpty())
+		// 使用 HotUpdatePackageHelper::IsUAssetFile 区分 UE 资产和 Non-asset 文件
+		bool bIsUAsset = FHotUpdatePackageHelper::IsUAssetFile(AssetPath);
+		// 无扩展名时，尝试通过 FPackageName 判断
+		if (!bIsUAsset && FPaths::GetExtension(AssetPath).IsEmpty())
 		{
-			// 无扩展名时，尝试通过 FPackageName 判断
 			FString Filename;
 			if (FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
 			{
@@ -244,10 +250,6 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 				bIsUAsset = FPaths::FileExists(AbsolutePath + TEXT(".umap")) ||
 							FPaths::FileExists(AbsolutePath + TEXT(".uasset"));
 			}
-		}
-		else
-		{
-			bIsUAsset = (Extension == TEXT("umap") || Extension == TEXT("uasset"));
 		}
 
 		FString DiskPath;
@@ -264,46 +266,13 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 		}
 		else
 		{
-			// Non-asset 文件：将虚拟路径转换为绝对路径
-			// 虚拟路径格式: /Game/Setting/txt_pak.txt 或 ../../../GameUpdate/Content/Setting/txt_pak.txt
-			if (AssetPath.StartsWith(TEXT("/Game/")))
+			// Non-asset 文件：将虚拟路径转换为绝对路径（使用 HotUpdatePackageHelper::VirtualPathToDiskPath）
+			DiskPath = FHotUpdatePackageHelper::VirtualPathToDiskPath(AssetPath);
+			if (DiskPath.IsEmpty())
 			{
-				// 虚拟路径 /Game/... 转换为项目 Content 目录
-				FString RelativePath = AssetPath.RightChop(6); // 去掉 "/Game/"
-				DiskPath = FPaths::ProjectContentDir() + RelativePath;
-				DiskPath = FPaths::ConvertRelativePathToFull(DiskPath);
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("非资产路径格式无法识别: %s"), *AssetPath);
+				continue;
 			}
-			else if (AssetPath.StartsWith(TEXT("../../../")))
-			{
-				// Pak 挂载路径格式，需要转换回绝对路径
-				FString ProjectName = FApp::GetProjectName();
-				FString Prefix = FString::Printf(TEXT("../../../%s/Content/"), *ProjectName);
-				if (AssetPath.StartsWith(Prefix))
-				{
-					FString RelativePath = AssetPath.RightChop(Prefix.Len());
-					DiskPath = FPaths::ProjectContentDir() + RelativePath;
-					DiskPath = FPaths::ConvertRelativePathToFull(DiskPath);
-				}
-				else
-				{
-					// 其他 ../../../ 格式（如引擎路径），无法处理
-					UE_LOG(LogHotUpdateEditor, Warning, TEXT("非资产路径格式无法识别: %s"), *AssetPath);
-					continue;
-				}
-			}
-			else if (FPaths::IsRelative(AssetPath))
-			{
-				// 相对路径，相对于项目目录
-				DiskPath = FPaths::ProjectDir() + AssetPath;
-				DiskPath = FPaths::ConvertRelativePathToFull(DiskPath);
-			}
-			else
-			{
-				// 已经是绝对路径，直接使用
-				DiskPath = AssetPath;
-			}
-
-			DiskPath.ReplaceCharInline('\\', '/');
 		}
 
 		if (DiskPath.IsEmpty() || !PlatformFile.FileExists(*DiskPath))

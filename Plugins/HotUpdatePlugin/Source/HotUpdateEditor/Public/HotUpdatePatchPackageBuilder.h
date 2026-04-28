@@ -38,25 +38,6 @@ public:
 	FOnPatchPackageCompleteDelegate OnComplete;
 
 private:
-	// === 静态辅助函数（复用） ===
-
-	/** 从 Manifest JSON 中提取版本号 */
-	static FString ExtractVersionFromManifest(const FString& ManifestPath);
-
-	/** 计算文件 Hash 映射（统一处理资产和非资产） */
-	static bool CalculateHashesForPaths(
-		const TArray<FString>& SourcePaths,
-		TMap<FString, FString>& OutHashes,
-		TMap<FString, int64>& OutSizes,
-		FString& OutErrorMessage,
-		const std::atomic<bool>& CancelFlag);
-
-	/** 解析单个容器 JSON 对象（复用） */
-	static bool ParseContainerFromJson(
-		const TSharedPtr<FJsonObject>& ContainerObj,
-		FHotUpdateContainerInfo& OutInfo,
-		const FString& DefaultVersion);
-
 	/** 将 Hash 映射按资产类型分离 */
 	static void SplitHashesByAssetType(
 		const TMap<FString, FString>& AllHashes,
@@ -83,31 +64,7 @@ private:
 		TArray<FString>& OutAssetSourcePaths,
 		TArray<FString>& OutNonAssetSourcePaths,
 		FString& OutErrorMessage);
-
-	/** 创建 Patch IoStore 容器 */
-	bool CreatePatchContainer(
-		const TArray<FString>& ChangedAssetPaths,
-		const TArray<FString>& ChangedNonAssetPaths,
-		const FString& OutputDir,
-		FString& OutPatchUtocPath,
-		FString& OutPatchUcasPath,
-		int64& OutPatchSize,
-		FString& OutErrorMessage);
-
-
-	/** 从 Manifest 加载 Patch 容器引用 */
-	bool LoadPatchContainersFromManifest(
-		const FString& ManifestPath,
-		const FString& DefaultVersion,
-		TArray<FHotUpdateContainerInfo>& OutContainers);
-
-	/** 注册版本信息 */
-	void RegisterPatchVersion(
-		const FString& OutputDir,
-		const FString& PatchUtocPath,
-		const FHotUpdateDiffReport& DiffReport);
-
-	// === 重构的现有函数 ===
+	
 
 	/** 加载基础版本 FileManifest（返回分类结果） */
 	static bool LoadBaseFileManifest(

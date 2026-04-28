@@ -4,6 +4,7 @@
 #include "HotUpdateEditorStyle.h"
 #include "HotUpdateNotificationHelper.h"
 #include "HotUpdateBaseVersionBuilder.h"
+#include "HotUpdateUtils.h"
 #include "Styling/AppStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "DesktopPlatformModule.h"
@@ -518,22 +519,8 @@ FReply SHotUpdateBaseVersionPanel::OnBrowseOutputDirectory()
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem)
 {
-	FText PlatformText;
-	switch (*InItem)
-	{
-	case EHotUpdatePlatform::Windows:
-		PlatformText = LOCTEXT("PlatformWindows", "Windows (PC)");
-		break;
-	case EHotUpdatePlatform::Android:
-		PlatformText = LOCTEXT("PlatformAndroid", "Android");
-		break;
-	case EHotUpdatePlatform::IOS:
-		PlatformText = LOCTEXT("PlatformIOS", "iOS");
-		break;
-	}
-
 	return SNew(STextBlock)
-		.Text(PlatformText)
+		.Text(HotUpdateUtils::GetPlatformDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -551,37 +538,15 @@ FText SHotUpdateBaseVersionPanel::GetSelectedPlatformText() const
 {
 	if (SelectedPlatform.IsValid())
 	{
-		switch (*SelectedPlatform)
-		{
-		case EHotUpdatePlatform::Windows:
-			return LOCTEXT("PlatformWindows", "Windows (PC)");
-		case EHotUpdatePlatform::Android:
-			return LOCTEXT("PlatformAndroid", "Android");
-		case EHotUpdatePlatform::IOS:
-			return LOCTEXT("PlatformIOS", "iOS");
-		}
+		return HotUpdateUtils::GetPlatformDisplayName(*SelectedPlatform);
 	}
-	return LOCTEXT("PlatformWindows", "Windows (PC)");
+	return HotUpdateUtils::GetPlatformDisplayName(EHotUpdatePlatform::Windows);
 }
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GenerateBuildConfigComboBoxItem(TSharedPtr<EHotUpdateBuildConfiguration> InItem)
 {
-	FText ConfigText;
-	switch (*InItem)
-	{
-	case EHotUpdateBuildConfiguration::DebugGame:
-		ConfigText = LOCTEXT("BuildConfigDebugGame", "DebugGame (包含调试信息)");
-		break;
-	case EHotUpdateBuildConfiguration::Development:
-		ConfigText = LOCTEXT("BuildConfigDevelopment", "Development");
-		break;
-	case EHotUpdateBuildConfiguration::Shipping:
-		ConfigText = LOCTEXT("BuildConfigShipping", "Shipping (发布构建)");
-		break;
-	}
-
 	return SNew(STextBlock)
-		.Text(ConfigText)
+		.Text(HotUpdateUtils::GetBuildConfigDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -599,17 +564,9 @@ FText SHotUpdateBaseVersionPanel::GetSelectedBuildConfigText() const
 {
 	if (SelectedBuildConfig.IsValid())
 	{
-		switch (*SelectedBuildConfig)
-		{
-		case EHotUpdateBuildConfiguration::DebugGame:
-			return LOCTEXT("BuildConfigDebugGame", "DebugGame (包含调试信息)");
-		case EHotUpdateBuildConfiguration::Development:
-			return LOCTEXT("BuildConfigDevelopment", "Development");
-		case EHotUpdateBuildConfiguration::Shipping:
-			return LOCTEXT("BuildConfigShipping", "Shipping (发布构建)");
-		}
+		return HotUpdateUtils::GetBuildConfigDisplayName(*SelectedBuildConfig);
 	}
-	return LOCTEXT("BuildConfigDevelopment", "Development");
+	return HotUpdateUtils::GetBuildConfigDisplayName(EHotUpdateBuildConfiguration::Development);
 }
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateMinimalPackageSettings()
@@ -868,24 +825,8 @@ FReply SHotUpdateBaseVersionPanel::OnRemoveWhitelistDirectoryClicked(TSharedPtr<
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GenerateDependencyStrategyComboBoxItem(TSharedPtr<EHotUpdateDependencyStrategy> InItem)
 {
-	FText StrategyText;
-	switch (*InItem)
-	{
-	case EHotUpdateDependencyStrategy::IncludeAll:
-		StrategyText = LOCTEXT("DependencyIncludeAll", "包含所有依赖");
-		break;
-	case EHotUpdateDependencyStrategy::HardOnly:
-		StrategyText = LOCTEXT("DependencyHardOnly", "仅硬依赖");
-		break;
-	case EHotUpdateDependencyStrategy::SoftOnly:
-		StrategyText = LOCTEXT("DependencySoftOnly", "仅软依赖");
-		break;
-	case EHotUpdateDependencyStrategy::None:
-		StrategyText = LOCTEXT("DependencyNone", "不包含依赖");
-		break;
-	}
 	return SNew(STextBlock)
-		.Text(StrategyText)
+		.Text(HotUpdateUtils::GetDependencyStrategyDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -903,35 +844,15 @@ FText SHotUpdateBaseVersionPanel::GetSelectedDependencyStrategyText() const
 {
 	if (SelectedDependencyStrategy.IsValid())
 	{
-		switch (*SelectedDependencyStrategy)
-		{
-		case EHotUpdateDependencyStrategy::IncludeAll:
-			return LOCTEXT("DependencyIncludeAll", "包含所有依赖");
-		case EHotUpdateDependencyStrategy::HardOnly:
-			return LOCTEXT("DependencyHardOnly", "仅硬依赖");
-		case EHotUpdateDependencyStrategy::SoftOnly:
-			return LOCTEXT("DependencySoftOnly", "仅软依赖");
-		case EHotUpdateDependencyStrategy::None:
-			return LOCTEXT("DependencyNone", "不包含依赖");
-		}
+		return HotUpdateUtils::GetDependencyStrategyDisplayName(*SelectedDependencyStrategy);
 	}
-	return LOCTEXT("DependencyHardOnly", "仅硬依赖");
+	return HotUpdateUtils::GetDependencyStrategyDisplayName(EHotUpdateDependencyStrategy::HardOnly);
 }
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GeneratePatchChunkStrategyComboBoxItem(TSharedPtr<EHotUpdateChunkStrategy> InItem)
 {
-	FText StrategyText;
-	switch (*InItem)
-	{
-	case EHotUpdateChunkStrategy::None:
-		StrategyText = LOCTEXT("ChunkStrategyNone", "不分包（全部一个Chunk）");
-		break;
-	case EHotUpdateChunkStrategy::Size:
-		StrategyText = LOCTEXT("ChunkStrategySize", "按大小分包");
-		break;
-	}
 	return SNew(STextBlock)
-		.Text(StrategyText)
+		.Text(HotUpdateUtils::GetChunkStrategyDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -949,15 +870,9 @@ FText SHotUpdateBaseVersionPanel::GetSelectedPatchChunkStrategyText() const
 {
 	if (SelectedPatchChunkStrategy.IsValid())
 	{
-		switch (*SelectedPatchChunkStrategy)
-		{
-		case EHotUpdateChunkStrategy::None:
-			return LOCTEXT("ChunkStrategyNone", "不分包（全部一个Chunk）");
-		case EHotUpdateChunkStrategy::Size:
-			return LOCTEXT("ChunkStrategySize", "按大小分包");
-		}
+		return HotUpdateUtils::GetChunkStrategyDisplayName(*SelectedPatchChunkStrategy);
 	}
-	return LOCTEXT("ChunkStrategyNone", "不分包（全部一个Chunk）");
+	return HotUpdateUtils::GetChunkStrategyDisplayName(EHotUpdateChunkStrategy::None);
 }
 
 float SHotUpdateBaseVersionPanel::GetMaxChunkSizeValue() const
@@ -967,24 +882,8 @@ float SHotUpdateBaseVersionPanel::GetMaxChunkSizeValue() const
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem)
 {
-	FText FormatText;
-	switch (*InItem)
-	{
-	case EHotUpdateAndroidTextureFormat::ETC2:
-		FormatText = LOCTEXT("TextureFormatETC2", "ETC2");
-		break;
-	case EHotUpdateAndroidTextureFormat::ASTC:
-		FormatText = LOCTEXT("TextureFormatASTC", "ASTC");
-		break;
-	case EHotUpdateAndroidTextureFormat::DXT:
-		FormatText = LOCTEXT("TextureFormatDXT", "DXT");
-		break;
-	case EHotUpdateAndroidTextureFormat::Multi:
-		FormatText = LOCTEXT("TextureFormatMulti", "Multi");
-		break;
-	}
 	return SNew(STextBlock)
-		.Text(FormatText)
+		.Text(HotUpdateUtils::GetTextureFormatDisplayName(*InItem))
 		.Font(FHotUpdateEditorStyle::GetNormalFont())
 		.Margin(FMargin(4, 2));
 }
@@ -1002,19 +901,9 @@ FText SHotUpdateBaseVersionPanel::GetSelectedAndroidTextureFormatText() const
 {
 	if (SelectedAndroidTextureFormat.IsValid())
 	{
-		switch (*SelectedAndroidTextureFormat)
-		{
-		case EHotUpdateAndroidTextureFormat::ETC2:
-			return LOCTEXT("TextureFormatETC2", "ETC2");
-		case EHotUpdateAndroidTextureFormat::ASTC:
-			return LOCTEXT("TextureFormatASTC", "ASTC");
-		case EHotUpdateAndroidTextureFormat::DXT:
-			return LOCTEXT("TextureFormatDXT", "DXT");
-		case EHotUpdateAndroidTextureFormat::Multi:
-			return LOCTEXT("TextureFormatMulti", "Multi");
-		}
+		return HotUpdateUtils::GetTextureFormatDisplayName(*SelectedAndroidTextureFormat);
 	}
-	return LOCTEXT("TextureFormatETC2", "ETC2");
+	return HotUpdateUtils::GetTextureFormatDisplayName(EHotUpdateAndroidTextureFormat::ETC2);
 }
 
 EVisibility SHotUpdateBaseVersionPanel::GetAndroidTextureFormatVisibility() const
