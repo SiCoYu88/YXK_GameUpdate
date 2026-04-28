@@ -22,9 +22,6 @@ const FLinearColor FHotUpdateEditorStyle::FDiffColors::Deleted = FLinearColor(0.
 const FLinearColor FHotUpdateEditorStyle::FThemeColors::Primary = FLinearColor(0.25f, 0.55f, 0.85f);
 
 const FLinearColor FHotUpdateEditorStyle::FThemeColors::Background = FLinearColor(0.04f, 0.04f, 0.04f);
-const FLinearColor FHotUpdateEditorStyle::FThemeColors::BackgroundDark = FLinearColor(0.02f, 0.02f, 0.02f);
-
-const FLinearColor FHotUpdateEditorStyle::FThemeColors::Border = FLinearColor(0.1f, 0.1f, 0.1f);
 
 const FLinearColor FHotUpdateEditorStyle::FThemeColors::TextPrimary = FLinearColor(0.95f, 0.95f, 0.95f);
 const FLinearColor FHotUpdateEditorStyle::FThemeColors::TextSecondary = FLinearColor(0.7f, 0.7f, 0.7f);

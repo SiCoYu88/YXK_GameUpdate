@@ -1303,44 +1303,6 @@ FHotUpdateDiffReport FHotUpdatePatchPackageBuilder::MergeDiffReports(
 	return Result;
 }
 
-TArray<FString> FHotUpdatePatchPackageBuilder::CollectAssetsToCook(
-	const FHotUpdateDiffReport& DiffReport,
-	const TMap<FString, FString>& BaseAssetHashes,
-	const TArray<FString>& AllAssetPaths)
-{
-	TArray<FString> AssetsToCook;
-
-	// 修改的资源需要 Cook
-	for (const FHotUpdateAssetDiff& Diff : DiffReport.ModifiedAssets)
-	{
-		AssetsToCook.Add(Diff.AssetPath);
-	}
-
-	// 构建基础 Manifest 资源集合
-	TSet<FString> BaseAssetSet;
-	for (const auto& Pair : BaseAssetHashes)
-	{
-		BaseAssetSet.Add(Pair.Key);
-	}
-
-	// 新增资源（不在基础 Manifest 中）
-	for (const FString& AssetPath : AllAssetPaths)
-	{
-		if (FHotUpdatePackageHelper::IsExternalAsset(AssetPath))
-		{
-			continue;
-		}
-
-		if (!BaseAssetSet.Contains(AssetPath))
-		{
-			AssetsToCook.Add(AssetPath);
-			UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 发现新增资源: %s"), *AssetPath);
-		}
-	}
-
-	return AssetsToCook;
-}
-
 FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::MakeErrorResult(const FString& ErrorMessage)
 {
 	FHotUpdatePatchPackageResult Result;
@@ -1384,23 +1346,6 @@ bool FHotUpdatePatchPackageBuilder::CollectSourceFilePaths(
 	}
 
 	return OutAssetSourcePaths.Num() > 0 || OutNonAssetSourcePaths.Num() > 0;
-}
-
-FString FHotUpdatePatchPackageBuilder::PrepareOutputDirectory()
-{
-	FString OutputDir = CurrentConfig.OutputDirectory.Path;
-	if (OutputDir.IsEmpty())
-	{
-		OutputDir = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
-	}
-
-	FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
-	OutputDir = FPaths::Combine(OutputDir, CurrentConfig.PatchVersion, PlatformStr);
-	FPaths::NormalizeDirectoryName(OutputDir);
-
-	IPlatformFile::GetPlatformPhysical().CreateDirectoryTree(*OutputDir);
-
-	return OutputDir;
 }
 
 bool FHotUpdatePatchPackageBuilder::CreatePatchContainer(

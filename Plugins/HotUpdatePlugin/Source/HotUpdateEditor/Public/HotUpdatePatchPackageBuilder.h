@@ -73,12 +73,6 @@ private:
 		const FString& BaseVersion,
 		const FString& TargetVersion);
 
-	/** 收集增量 Cook 资源列表 */
-	static TArray<FString> CollectAssetsToCook(
-		const FHotUpdateDiffReport& DiffReport,
-		const TMap<FString, FString>& BaseAssetHashes,
-		const TArray<FString>& AllAssetPaths);
-
 	// === 阶段子函数 ===
 
 	/** 收集资源 */
@@ -89,9 +83,6 @@ private:
 		TArray<FString>& OutAssetSourcePaths,
 		TArray<FString>& OutNonAssetSourcePaths,
 		FString& OutErrorMessage);
-
-	/** 准备输出目录 */
-	FString PrepareOutputDirectory();
 
 	/** 创建 Patch IoStore 容器 */
 	bool CreatePatchContainer(
@@ -109,25 +100,6 @@ private:
 		const FString& ManifestPath,
 		const FString& DefaultVersion,
 		TArray<FHotUpdateContainerInfo>& OutContainers);
-
-	/** 生成客户端 Manifest */
-	bool GenerateClientManifest(
-		const FString& ManifestPath,
-		const FString& PatchUtocPath,
-		const FString& PatchUcasPath,
-		const TArray<FHotUpdateContainerInfo>& BaseContainers,
-		int64 PatchSize,
-		TSharedPtr<FJsonObject>& OutVersionInfo,
-		TArray<TSharedPtr<FJsonValue>>& OutContainersArray);
-
-	/** 生成编辑器端 FileManifest */
-	bool GenerateFileManifest(
-		const FString& FileManifestPath,
-		const TSharedPtr<FJsonObject>& VersionInfo,
-		const TArray<TSharedPtr<FJsonValue>>& ContainersArray,
-		const FHotUpdateDiffReport& DiffReport,
-		const TMap<FString, FString>& BaseContainerFilesHash,
-		const TMap<FString, int64>& BaseContainerFilesSize);
 
 	/** 注册版本信息 */
 	void RegisterPatchVersion(

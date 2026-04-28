@@ -90,58 +90,6 @@ FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::AnalyzeAndCreateChunks(
 	return Result;
 }
 
-FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::CreatePatchChunks(
-	const TArray<FString>& ChangedAssets,
-	const TMap<FString, FString>& AssetDiskPaths,
-	const FHotUpdateChunkAnalysisConfig& Config)
-{
-	FHotUpdateChunkAnalysisResult Result;
-
-	if (ChangedAssets.Num() == 0)
-	{
-		Result.bSuccess = true;
-		Result.ErrorMessage = TEXT("没有变更资源");
-		return Result;
-	}
-
-	// 创建单个 Patch Chunk
-	TArray<FHotUpdateChunkDefinition> Chunks;
-	TMap<FString, int32> AssetToChunk;
-	
-	FHotUpdateChunkDefinition Chunk;
-	Chunk.ChunkId = AllocateNextChunkId() + 100;
-	Chunk.ChunkName = TEXT("Patch");
-	Chunk.AssetPaths = ChangedAssets;
-
-	int64 ChunkSize = 0;
-	for (const FString& AssetPath : ChangedAssets)
-	{
-		AssetToChunk.Add(AssetPath, Chunk.ChunkId);
-		ChunkSize += GetAssetSize(AssetPath, AssetDiskPaths);
-	}
-
-	Chunk.UncompressedSize = ChunkSize;
-	Chunk.CompressedSize = ChunkSize; // 简化处理
-
-	Chunks.Add(Chunk);
-
-	// 计算统计信息
-	int64 TotalSize = 0;
-	for (const FString& AssetPath : ChangedAssets)
-	{
-		TotalSize += GetAssetSize(AssetPath, AssetDiskPaths);
-	}
-
-	Result.Chunks = MoveTemp(Chunks);
-	Result.AssetToChunkMap = MoveTemp(AssetToChunk);
-	Result.TotalAssetCount = ChangedAssets.Num();
-	Result.TotalChunkCount = Result.Chunks.Num();
-	Result.TotalSize = TotalSize;
-	Result.bSuccess = true;
-
-	return Result;
-}
-
 int64 FHotUpdateChunkManager::GetAssetSize(const FString& AssetPath, const TMap<FString, FString>& AssetDiskPaths)
 {
 	const FString* DiskPath = AssetDiskPaths.Find(AssetPath);

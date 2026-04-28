@@ -31,18 +31,6 @@ public:
 	
 
 	/**
-	 * 检查资产是否匹配过滤规则
-	 * @param AssetPath 资产路径
-	 * @param Rule 过滤规则
-	 * @param AssetRegistry 资产注册表（用于获取资产类型）
-	 * @return 是否匹配
-	 */
-	static bool MatchesFilterRule(
-		const FString& AssetPath,
-		const FHotUpdateAssetFilterRule& Rule,
-		IAssetRegistry* AssetRegistry);
-
-	/**
 	 * 检查资产是否在目录列表中
 	 * @param AssetPath 资产路径
 	 * @param Directories 目录列表
@@ -77,17 +65,7 @@ public:
 		EHotUpdateDependencyStrategy Strategy,
 		TSet<FString>& OutDependencies);
 
-	/**
-	 * 获取资产类型名称
-	 * @param AssetPath 资产路径
-	 * @param AssetRegistry 资产注册表
-	 * @return 资产类型名称（如 "Texture2D", "Material"）
-	 */
-	static FString GetAssetTypeName(
-		const FString& AssetPath,
-		IAssetRegistry* AssetRegistry);
-
-private:
+	private:
 	/**
 	 * 内部递归获取依赖
 	 */
@@ -98,11 +76,4 @@ private:
 		TSet<FString>& OutDependencies,
 		TSet<FString>& Visited);
 
-	/**
-	 * 通配符匹配
-	 * @param Pattern 模式（包含 * 通配符）
-	 * @param Text 要匹配的文本
-	 * @return 是否匹配
-	 */
-	static bool WildcardMatch(const FString& Pattern, const FString& Text);
-};
+	};

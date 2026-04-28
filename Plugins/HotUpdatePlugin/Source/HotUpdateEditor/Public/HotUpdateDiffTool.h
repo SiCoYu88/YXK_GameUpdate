@@ -44,36 +44,11 @@ public:
 	 */
 	static FString FindFileManifestPath(const FString& VersionDirectory);
 
-	// 差异比较完成委托
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnDiffComplete, const FHotUpdateDiffReport&);
-	FOnDiffComplete OnDiffComplete;
-
 private:
-	/**
-	 * 扫描目录获取所有资源
-	 * @param Directory 目录路径
-	 * @param bIncludeHiddenFiles 是否包含隐藏文件（传递给 FindFilesRecursive 的 bFindHidden 参数）
-	 * @param OutAssets 输出资源映射
-	 */
-	static void ScanDirectory(
-		const FString& Directory,
-		bool bIncludeHiddenFiles,
-		TMap<FString, FHotUpdateAssetDiff>& OutAssets);
-
 	/**
 	 * 解析Manifest文件
 	 */
 	static bool ParseManifestFile(
 		const FString& ManifestPath,
 		TMap<FString, FHotUpdateManifestEntry>& OutEntries);
-
-	/**
-	 * 从Pak文件中提取文件名到SHA1 Hash的映射
-	 */
-	static TMap<FString, FString> GetPakFileHashes(const FString& PakPath);
-
-	/**
-	 * 获取文件扩展名对应的资源类型
-	 */
-	static FString GetAssetTypeFromExtension(const FString& Extension);
 };

@@ -145,7 +145,6 @@ FHotUpdateDiffReport FHotUpdateDiffTool::CompareManifests(
 		Report.AddedAssets.Num(), Report.ModifiedAssets.Num(), Report.DeletedAssets.Num(), Report.UnchangedAssets.Num(),
 		*Report.BaseVersion, *Report.TargetVersion);
 
-	OnDiffComplete.Broadcast(Report);
 	return Report;
 }
 
@@ -173,60 +172,6 @@ FName FHotUpdateDiffTool::GetAssetIconName(const FString& AssetPath)
 	}
 
 	return FName("ClassIcon.Object");
-}
-
-void FHotUpdateDiffTool::ScanDirectory(
-	const FString& Directory,
-	bool bIncludeHiddenFiles,
-	TMap<FString, FHotUpdateAssetDiff>& OutAssets)
-{
-	// 规范化目录路径：统一分隔符，移除尾部斜杠
-	FString NormalizedDir = Directory;
-	FPaths::NormalizeDirectoryName(NormalizedDir);
-	// 统一使用正斜杠，确保与 FindFilesRecursive 返回的路径格式匹配
-	NormalizedDir.ReplaceInline(TEXT("\\"), TEXT("/"));
-
-	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
-
-	TArray<FString> FoundFiles;
-	// 注意：FindFilesRecursive 始终递归搜索，第 6 个参数是 bFindHidden（是否包含隐藏文件）
-	IFileManager::Get().FindFilesRecursive(FoundFiles, *NormalizedDir, TEXT("*.*"), true, false, bIncludeHiddenFiles);
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("ScanDirectory: Scanning '%s' (normalized from '%s'), found %d files"),
-		*NormalizedDir, *Directory, FoundFiles.Num());
-
-	for (const FString& File : FoundFiles)
-	{
-		// 使用字符串截取获取相对路径，而非 MakePathRelativeTo
-		// 因为 MakePathRelativeTo 内部会取 InRelativeTo 的父目录，导致相对路径包含目录名本身
-		FString RelativePath = File;
-		// 统一使用正斜杠，确保与 NormalizedDir 的 StartsWith 匹配
-		RelativePath.ReplaceInline(TEXT("\\"), TEXT("/"));
-		if (RelativePath.StartsWith(NormalizedDir))
-		{
-			RelativePath = RelativePath.RightChop(NormalizedDir.Len());
-			// 移除开头的路径分隔符
-			while (RelativePath.Len() > 0 && (RelativePath[0] == TEXT('/') || RelativePath[0] == TEXT('\\')))
-			{
-				RelativePath.RightChopInline(1);
-			}
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("ScanDirectory: File '%s' does not start with dir '%s', using full path"), *File, *NormalizedDir);
-		}
-
-		UE_LOG(LogHotUpdateEditor, Verbose, TEXT("ScanDirectory: RelativePath='%s' (from '%s')"), *RelativePath, *File);
-
-		FHotUpdateAssetDiff Diff;
-		Diff.AssetPath = RelativePath;
-		Diff.NewSize = PlatformFile.FileSize(*File);
-		Diff.NewHash = UHotUpdateFileUtils::CalculateFileHash(File);
-
-		OutAssets.Add(RelativePath, Diff);
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("ScanDirectory: Added %d assets from '%s'"), OutAssets.Num(), *NormalizedDir);
 }
 
 bool FHotUpdateDiffTool::ParseManifestFile(
@@ -301,75 +246,6 @@ bool FHotUpdateDiffTool::ParseManifestFile(
 
 	UE_LOG(LogHotUpdateEditor, Warning, TEXT("ParseManifestFile: No 'files' or 'assets' array found in '%s'"), *ManifestPath);
 	return false;
-}
-
-TMap<FString, FString> FHotUpdateDiffTool::GetPakFileHashes(const FString& PakPath)
-{
-	TMap<FString, FString> FileHashes;
-
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	if (!PlatformFile.FileExists(*PakPath))
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("Pak file not found: %s"), *PakPath);
-		return FileHashes;
-	}
-
-	TRefCountPtr<FPakFile> PakFile = new FPakFile(&PlatformFile, *PakPath, false);
-	if (!PakFile.IsValid() || !PakFile->IsValid())
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("Failed to open Pak file: %s"), *PakPath);
-		return FileHashes;
-	}
-
-	// 使用 FFilenameIterator 遍历 Pak 条目
-	for (FPakFile::FFilenameIterator It(*PakFile); It; ++It)
-	{
-		const FPakEntry& Entry = It.Info();
-		FString Hash = UHotUpdateFileUtils::BytesToHex(Entry.Hash, sizeof(Entry.Hash));
-		FileHashes.Add(It.Filename(), Hash);
-	}
-
-	// 降级方案：使用 FPakEntryIterator
-	if (FileHashes.Num() == 0 && PakFile->GetNumFiles() > 0)
-	{
-		for (FPakFile::FPakEntryIterator It(*PakFile); It; ++It)
-		{
-			const FString* Filename = It.TryGetFilename();
-			if (Filename && !Filename->IsEmpty())
-			{
-				const FPakEntry& Entry = It.Info();
-				FString Hash = UHotUpdateFileUtils::BytesToHex(Entry.Hash, sizeof(Entry.Hash));
-				FileHashes.Add(*Filename, Hash);
-			}
-		}
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("Extracted %d file hashes from Pak: %s"), FileHashes.Num(), *PakPath);
-
-	return FileHashes;
-}
-
-FString FHotUpdateDiffTool::GetAssetTypeFromExtension(const FString& Extension)
-{
-	const FString Ext = Extension.ToLower();
-
-	static TMap<FString, FString> ExtensionToType;
-	if (ExtensionToType.Num() == 0)
-	{
-		ExtensionToType.Add(TEXT("uasset"), TEXT("Asset"));
-		ExtensionToType.Add(TEXT("umap"), TEXT("Map"));
-		ExtensionToType.Add(TEXT("png"), TEXT("Texture"));
-		ExtensionToType.Add(TEXT("tga"), TEXT("Texture"));
-		ExtensionToType.Add(TEXT("jpg"), TEXT("Texture"));
-		ExtensionToType.Add(TEXT("wav"), TEXT("Sound"));
-		ExtensionToType.Add(TEXT("fbx"), TEXT("Mesh"));
-		ExtensionToType.Add(TEXT("obj"), TEXT("Mesh"));
-		ExtensionToType.Add(TEXT("pak"), TEXT("Pak"));
-		ExtensionToType.Add(TEXT("utoc"), TEXT("IoStore"));
-		ExtensionToType.Add(TEXT("ucas"), TEXT("IoStore"));
-	}
-
-	return ExtensionToType.Contains(Ext) ? ExtensionToType[Ext] : TEXT("Unknown");
 }
 
 FString FHotUpdateDiffTool::FormatFileSize(int64 Size)

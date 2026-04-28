@@ -51,10 +51,6 @@ public:
 
 		// 背景色
 		static const FLinearColor Background;     // 主背景
-		static const FLinearColor BackgroundDark; // 深色背景
-
-		// 边框色
-		static const FLinearColor Border;         // 普通边框
 
 		// 文字色
 		static const FLinearColor TextPrimary;    // 主要文字
@@ -75,7 +71,6 @@ public:
 	// 主题颜色获取
 	static FSlateColor GetPrimaryColor() { return FThemeColors::Primary; }
 	static FSlateColor GetBackgroundColor() { return FThemeColors::Background; }
-	static FSlateColor GetBackgroundDarkColor() { return FThemeColors::BackgroundDark; }
 	static FSlateColor GetTextPrimaryColor() { return FThemeColors::TextPrimary; }
 	static FSlateColor GetTextSecondaryColor() { return FThemeColors::TextSecondary; }
 
