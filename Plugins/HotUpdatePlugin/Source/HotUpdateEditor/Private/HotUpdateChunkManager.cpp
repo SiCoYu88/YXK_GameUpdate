@@ -69,12 +69,6 @@ FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::AnalyzeAndCreateChunks(
 		return Result;
 	}
 
-	// 构建依赖关系
-	if (Config.bAnalyzeDependencies)
-	{
-		BuildDependencies(Chunks, AssetToChunk, AssetRegistry);
-	}
-
 	// 计算统计信息
 	int64 TotalSize = 0;
 	for (const FString& AssetPath : AssetPaths)
@@ -113,12 +107,9 @@ FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::CreatePatchChunks(
 	// 创建单个 Patch Chunk
 	TArray<FHotUpdateChunkDefinition> Chunks;
 	TMap<FString, int32> AssetToChunk;
-
-	// 使用 Patch Chunk ID 起始值
-	int32 PatchChunkId = Config.PatchChunkIdStart;
-
+	
 	FHotUpdateChunkDefinition Chunk;
-	Chunk.ChunkId = AllocateNextChunkId() + PatchChunkId;
+	Chunk.ChunkId = AllocateNextChunkId() + 100;
 	Chunk.ChunkName = TEXT("Patch");
 	Chunk.AssetPaths = ChangedAssets;
 
@@ -149,46 +140,6 @@ FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::CreatePatchChunks(
 	Result.bSuccess = true;
 
 	return Result;
-}
-
-bool FHotUpdateChunkManager::BuildDependencies(TArray<FHotUpdateChunkDefinition>& Chunks, const TMap<FString, int32>& AssetToChunk, const IAssetRegistry* AssetRegistry)
-{
-	if (!AssetRegistry)
-	{
-		return false;
-	}
-
-	// 构建反向映射
-	TMap<int32, int32> ChunkIdToIndex;
-	for (int32 i = 0; i < Chunks.Num(); i++)
-	{
-		ChunkIdToIndex.Add(Chunks[i].ChunkId, i);
-	}
-
-	// 分析每个 Chunk 中资源的依赖
-	for (int32 i = 0; i < Chunks.Num(); i++)
-	{
-		TSet<int32> DependentChunks;
-
-		for (const FString& AssetPath : Chunks[i].AssetPaths)
-		{
-			TArray<FName> Dependencies;
-			if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies))
-			{
-				for (const FName& Dep : Dependencies)
-				{
-					FString DepStr = Dep.ToString();
-					const int32* ChunkId = AssetToChunk.Find(DepStr);
-					if (ChunkId && *ChunkId != Chunks[i].ChunkId)
-					{
-						DependentChunks.Add(*ChunkId);
-					}
-				}
-			}
-		}
-	}
-
-	return true;
 }
 
 int64 FHotUpdateChunkManager::GetAssetSize(const FString& AssetPath, const TMap<FString, FString>& AssetDiskPaths)

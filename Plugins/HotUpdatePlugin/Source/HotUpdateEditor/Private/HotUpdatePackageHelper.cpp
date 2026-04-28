@@ -3,10 +3,15 @@
 #include "HotUpdatePackageHelper.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateUtils.h"
+#include "HotUpdateAssetFilter.h"
+#include "Core/HotUpdateFileUtils.h"
 #include "Misc/MonitoredProcess.h"
 #include "Misc/Paths.h"
 #include "Misc/App.h"
 #include "Misc/StringBuilder.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "Modules/ModuleManager.h"
 
 // ==================== 编译和 Cook 函数 ====================
 
@@ -153,6 +158,57 @@ bool FHotUpdatePackageHelper::CookAssets(EHotUpdatePlatform Platform, const TArr
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("Cook 完成"));
 	return true;
+}
+
+TArray<FString> FHotUpdatePackageHelper::CollectDependenciesAndFilterEngine(const TArray<FString>& AssetsToCook)
+{
+	if (AssetsToCook.Num() == 0)
+	{
+		return TArray<FString>();
+	}
+
+	UE_LOG(LogHotUpdateEditor, Display, TEXT("收集依赖: 需要 Cook %d 个资源"), AssetsToCook.Num());
+
+	TArray<FString> AssetsWithDeps;
+
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
+	if (AssetRegistry)
+	{
+		// 强制刷新 AssetRegistry 确保依赖信息完整
+		AssetRegistry->SearchAllAssets(true);
+		while (AssetRegistry->IsLoadingAssets())
+		{
+			FPlatformProcess::Sleep(0.1f);
+		}
+
+		TSet<FString> AssetsSet(AssetsToCook);
+		for (const FString& AssetPath : AssetsToCook)
+		{
+			TSet<FString> Dependencies;
+			// 使用 IncludeAll 策略收集所有依赖（包括软引用，如地图中放置的 Actor）
+			FHotUpdateAssetFilter::GetDependencies(AssetPath, AssetRegistry, EHotUpdateDependencyStrategy::IncludeAll, Dependencies);
+
+			// 过滤掉引擎资产（引擎资产不需要 Cook，已在引擎 Pak 中）
+			for (const FString& Dep : Dependencies)
+			{
+				if (!UHotUpdateFileUtils::IsEngineAsset(Dep))
+				{
+					AssetsSet.Add(Dep);
+				}
+			}
+		}
+		AssetsWithDeps = AssetsSet.Array();
+	}
+	else
+	{
+		AssetsWithDeps = AssetsToCook;
+	}
+
+	UE_LOG(LogHotUpdateEditor, Display, TEXT("收集依赖: 共 %d 个资源 (新增依赖 %d 个)"),
+		AssetsWithDeps.Num(), AssetsWithDeps.Num() - AssetsToCook.Num());
+
+	return AssetsWithDeps;
 }
 
 // ==================== 路径转换函数实现 ====================

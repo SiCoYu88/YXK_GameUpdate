@@ -94,14 +94,6 @@ private:
 		TMap<FString, int32>& OutAssetToChunk);
 
 	/**
-	 * 构建依赖关系
-	 */
-	static bool BuildDependencies(
-		TArray<FHotUpdateChunkDefinition>& Chunks,
-		const TMap<FString, int32>& AssetToChunk,
-		const IAssetRegistry* AssetRegistry);
-
-	/**
 	 * 获取资源文件大小
 	 */
 	static int64 GetAssetSize(const FString& AssetPath, const TMap<FString, FString>& AssetDiskPaths);

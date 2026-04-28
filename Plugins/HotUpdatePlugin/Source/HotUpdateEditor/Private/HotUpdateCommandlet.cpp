@@ -17,7 +17,6 @@ UHotUpdateCommandlet::UHotUpdateCommandlet(): bShowHelp(false), bIsShipping(fals
                                               bEnableMinimalPackage(false),
                                               PatchChunkStrategy(EHotUpdateChunkStrategy::None),
                                               PatchChunkSizeMB(256),
-                                              bIncludeBaseContainers(false),
                                               bSkipCook(false),
                                               bIncrementalCook(false)
 {
@@ -149,9 +148,6 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 		PatchChunkSizeMB = 256;
 	}
 
-	// 解析全量热更新参数
-	bIncludeBaseContainers = FParse::Param(*Params, TEXT("includebasecontainers"));
-	FParse::Value(*Params, TEXT("basecontainerdir="), BaseContainerDir);
 
 	// 解析 Android 纹理格式参数
 	FParse::Value(*Params, TEXT("textureformat="), TextureFormatStr);
@@ -177,8 +173,6 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  WhitelistDirectories: %s"), *WhitelistDirectories);
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  PatchChunkStrategy: %s"), *UEnum::GetValueAsString(PatchChunkStrategy));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  PatchChunkSizeMB: %d"), PatchChunkSizeMB);
-	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  IncludeBaseContainers: %s"), bIncludeBaseContainers ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  BaseContainerDir: %s"), *BaseContainerDir);
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  TextureFormat: %s"), *TextureFormatStr);
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  SkipCook: %s"), bSkipCook ? TEXT("true") : TEXT("false"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  IncrementalCook: %s"), bIncrementalCook ? TEXT("true") : TEXT("false"));
@@ -206,8 +200,6 @@ void UHotUpdateCommandlet::ShowHelp()
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -skipbuild            是否跳过编译步骤 (base/patch 模式，默认会先编译)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -minimal              启用最小包模式 (base 模式)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -whitelist            必须包含的目录，分号分隔 (如 /Game/UI;/Game/Maps)"));
-	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -includebasecontainers 是否包含基础版本容器（全量热更新模式）"));
-	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -basecontainerdir     基础版本容器目录路径（全量热更新模式需要）"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -textureformat        Android 纹理格式: ETC2, ASTC, DXT, Multi (base 模式, 默认 ETC2)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -skipcook             跳过 Cook 步骤 (patch 模式，默认会先 Cook)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -incrementalcook      启用增量 Cook，只 Cook 有变更的资源 (patch 模式)"));
@@ -387,28 +379,6 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		Config.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
 	}
 
-	// 配置全量热更新模式
-	if (bIncludeBaseContainers)
-	{
-		Config.bIncludeBaseContainers = true;
-
-		// 如果未指定基础容器目录，尝试自动查找
-		if (BaseContainerDir.IsEmpty())
-		{
-			FString BaseVersionBuildDir = FPaths::Combine(FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion, PlatformName);
-			if (FPaths::DirectoryExists(*BaseVersionBuildDir))
-			{
-				BaseContainerDir = BaseVersionBuildDir;
-				UE_LOG(LogHotUpdateCommandlet, Log, TEXT("自动找到基础容器目录: %s"), *BaseContainerDir);
-			}
-		}
-
-		if (!BaseContainerDir.IsEmpty())
-		{
-			Config.BaseContainerDirectory.Path = BaseContainerDir;
-			UE_LOG(LogHotUpdateCommandlet, Log, TEXT("启用全量热更新模式，基础容器目录: %s"), *BaseContainerDir);
-		}
-	}
 
 	// 创建构建器（栈对象）
 	FHotUpdatePatchPackageBuilder Builder;
@@ -435,13 +405,6 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  包大小: %.2f MB"), Result.PatchSize / (1024.0 * 1024.0));
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  Manifest: %s"), *Result.ManifestFilePath);
 
-		// 全量热更新信息
-		if (Result.bIncludesBaseContainers)
-		{
-			UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  全量热更新: 是"));
-			UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  基础容器数量: %d"), Result.BaseContainers.Num());
-			UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  总下载大小: %.2f MB"), Result.TotalDownloadSize / (1024.0 * 1024.0));
-		}
 
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  差异报告:"));
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("    新增: %d"), Result.DiffReport.AddedAssets.Num());

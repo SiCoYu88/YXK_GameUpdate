@@ -8,6 +8,11 @@
 /**
  * 资源差异比较工具
  * 用于比较两个版本间的资源差异
+ *
+ * 注意：CompareManifests 与 FHotUpdatePatchPackageBuilder::ComputeDiff 有相似的差异比较核心逻辑，
+ * 但两者输入数据格式不同：
+ * - CompareManifests：解析 manifest.json 文件，使用 FHotUpdateManifestEntry 结构
+ * - ComputeDiff：直接接收 Hash/Size 映射，用于打包流程
  */
 class HOTUPDATEEDITOR_API FHotUpdateDiffTool
 {

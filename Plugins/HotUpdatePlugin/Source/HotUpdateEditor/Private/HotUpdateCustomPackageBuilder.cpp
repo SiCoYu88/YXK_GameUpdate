@@ -74,7 +74,7 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("跳过编译步骤 (bSkipBuild = true)"));
 	}
 
-	// 只 Cook uasset 资源
+	// 只 Cook uasset 资源（依赖已在主线程收集）
 	if (!Config.bSkipCook && AssetPathsToCook.Num() > 0)
 	{
 		UpdateProgress(TEXT("增量 Cook 资源"), TEXT(""), 0, AssetPathsToCook.Num());
@@ -259,13 +259,13 @@ void FHotUpdateCustomPackageBuilder::BuildCustomPackageAsync(const FHotUpdateCus
 	bIsCancelled = false;
 	CurrentConfig = Config;
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("CurrentConfig.UassetFilePaths 数量: %d, NonAssetFilePaths 数量: %d"),
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("CurrentConfig.UAssetFilePaths 数量: %d, NonAssetFilePaths 数量: %d"),
 		CurrentConfig.UAssetFilePaths.Num(), CurrentConfig.NonAssetFilePaths.Num());
 
 	// 在 GameThread 将 uasset 磁盘路径反向解析为 UE 包名（供 Cook 使用）
 	TArray<FString> AssetPathsToCook = ResolveUassetPathsForCook();
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("GameThread 解析到 %d 个 Cook 路径，启动后台构建"), AssetPathsToCook.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("GameThread 解析到 %d 个 Cook 路径"), AssetPathsToCook.Num());
 
 	if (AssetPathsToCook.Num() == 0 && CurrentConfig.NonAssetFilePaths.Num() == 0)
 	{
@@ -277,56 +277,32 @@ void FHotUpdateCustomPackageBuilder::BuildCustomPackageAsync(const FHotUpdateCus
 		return;
 	}
 
+	// 主线程收集依赖并过滤引擎资产（AssetRegistry 操作必须在主线程）
+	TArray<FString> AssetsWithDeps = FHotUpdatePackageHelper::CollectDependenciesAndFilterEngine(AssetPathsToCook);
+
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("GameThread 收集依赖后 %d 个资源，启动后台构建"), AssetsWithDeps.Num());
+
 	TWeakPtr<FHotUpdateCustomPackageBuilder> WeakBuilder(AsShared());
 
-		BuildTask = Async(EAsyncExecution::Thread, [WeakBuilder, AssetPathsToCook]()
+	BuildTask = Async(EAsyncExecution::Thread, [WeakBuilder, AssetsWithDeps]()
+	{
+		const TSharedPtr<FHotUpdateCustomPackageBuilder> Builder = WeakBuilder.Pin();
+		if (!Builder.IsValid())
 		{
-			TSharedPtr<FHotUpdateCustomPackageBuilder> Builder = WeakBuilder.Pin();
-			if (!Builder.IsValid())
+			return;
+		}
+
+		FHotUpdateCustomPackageResult Result = Builder->ExecuteBuild(Builder->CurrentConfig, AssetsWithDeps);
+
+		AsyncTask(ENamedThreads::GameThread, [WeakBuilder, Result]()
+		{
+			const TSharedPtr<FHotUpdateCustomPackageBuilder> PinnedBuilder = WeakBuilder.Pin();
+			if (PinnedBuilder.IsValid())
 			{
-				return;
+				PinnedBuilder->OnComplete.Broadcast(Result);
 			}
-
-			struct FBuildGuard
-			{
-				TSharedPtr<FHotUpdateCustomPackageBuilder> Builder;
-				FHotUpdateCustomPackageResult Result;
-				bool bNormalCompletion = false;
-				FBuildGuard(TSharedPtr<FHotUpdateCustomPackageBuilder> InBuilder) : Builder(InBuilder) {}
-				~FBuildGuard()
-				{
-					if (Builder.IsValid() && Builder->bIsBuilding && !bNormalCompletion)
-					{
-						Builder->bIsBuilding = false;
-						UE_LOG(LogHotUpdateEditor, Warning, TEXT("自定义打包构建异常终止，已重置构建状态"));
-
-						TSharedPtr<FHotUpdateCustomPackageBuilder> GuardBuilder = Builder;
-						FHotUpdateCustomPackageResult ResultCopy = Result;
-						AsyncTask(ENamedThreads::GameThread, [GuardBuilder, ResultCopy]()
-						{
-							if (GuardBuilder.IsValid())
-							{
-								GuardBuilder->OnComplete.Broadcast(ResultCopy);
-							}
-						});
-					}
-				}
-			};
-			FBuildGuard Guard(Builder);
-
-			FHotUpdateCustomPackageResult Result = Builder->ExecuteBuild(Builder->CurrentConfig, AssetPathsToCook);
-			Guard.Result = Result;
-			Guard.bNormalCompletion = true;
-
-			AsyncTask(ENamedThreads::GameThread, [WeakBuilder, Result]()
-			{
-				TSharedPtr<FHotUpdateCustomPackageBuilder> PinnedBuilder = WeakBuilder.Pin();
-				if (PinnedBuilder.IsValid())
-				{
-					PinnedBuilder->OnComplete.Broadcast(Result);
-				}
-			});
 		});
+	});
 }
 
 void FHotUpdateCustomPackageBuilder::CancelBuild()

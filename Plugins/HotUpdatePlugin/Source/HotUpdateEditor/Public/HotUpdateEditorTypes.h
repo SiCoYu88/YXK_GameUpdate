@@ -226,19 +226,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisConfig
 	/// 按大小分包的详细配置
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk|Size")
 	FHotUpdateSizeBasedChunkConfig SizeBasedConfig;
-
-	/// 是否分析依赖关系
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	bool bAnalyzeDependencies;
-
-	/// 基础包 Chunk ID 起始值
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	int32 BaseChunkIdStart;
-
-	/// 更新包 Chunk ID 起始值
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	int32 PatchChunkIdStart;
-
+	
 	/// 未匹配任何规则的资源的默认 Chunk 名称
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
 	FString DefaultChunkName;
@@ -249,9 +237,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisConfig
 
 	FHotUpdateChunkAnalysisConfig()
 		: ChunkStrategy(EHotUpdateChunkStrategy::Size)
-		, bAnalyzeDependencies(true)
-		, BaseChunkIdStart(0)
-		, PatchChunkIdStart(10000)
 		, DefaultChunkName(TEXT("Default"))
 		, DefaultChunkId(-1)
 	{
@@ -273,14 +258,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateAssetFilterRule
 	/// 是否递归匹配子目录
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
 	bool bRecursive;
-
-	/// 资源类型过滤（空表示所有类型，如 "Texture2D", "Material", "StaticMesh"）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
-	TArray<FString> AssetTypes;
-
-	/// 规则描述
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
-	FString Description;
+	
 
 	FHotUpdateAssetFilterRule()
 		: bRecursive(true)
@@ -434,7 +412,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkDefinition
 	/// 包含的资源路径
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	TArray<FString> AssetPaths;
-	
+
 	/// 未压缩大小
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	int64 UncompressedSize;
@@ -506,19 +484,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "IoStore")
 	FHotUpdateIoStoreConfig IoStoreConfig;
 
-	/// === 全量热更新配置 ===
-
-	/// 是否包含基础版本容器（全量热更新模式）
-	/// 开启后，热更新包将包含基础版本的 Pak/IoStore 容器文件
-	/// 客户端可以直接从热更新包下载所有需要的资源，无需预先安装基础包
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
-	bool bIncludeBaseContainers;
-
-	/// 基础版本容器目录路径（全量热更新模式需要）
-	/// 指向基础版本的输出目录，包含 .utoc/.ucas 文件
-	/// 例如：Saved/HotUpdateVersions/1.0.0/Windows
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
-	FDirectoryPath BaseContainerDirectory;
 
 	/// 预收集的完整资源列表
 	TArray<FString> AssetPaths;
@@ -534,7 +499,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 		  , bSkipCook(false)
 		  , bIncrementalCook(false)
 		  , bSkipBuild(false)
-		  , bIncludeBaseContainers(false), bSynchronousMode(false)
+		  , bSynchronousMode(false)
 	{
 	}
 };
@@ -715,24 +680,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageResult
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	int64 PatchSize;
 
-	/// 是否需要基础包
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	bool bRequiresBasePackage;
-
-	/// === 全量热更新结果 ===
-
-	/// 是否包含基础版本容器
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	bool bIncludesBaseContainers;
-
-	/// 基础版本容器信息列表（全量热更新模式）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	TArray<FHotUpdateContainerInfo> BaseContainers;
-
-	/// 总下载大小（包含基础版本容器）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	int64 TotalDownloadSize;
-
+	
 	/// 错误信息
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	FString ErrorMessage;
@@ -741,9 +689,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageResult
 		: bSuccess(false)
 		, ChangedAssetCount(0)
 		, PatchSize(0)
-		, bRequiresBasePackage(true)
-		, bIncludesBaseContainers(false)
-		, TotalDownloadSize(0)
 	{
 	}
 };
@@ -858,10 +803,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateEditorVersionInfo
 	/// 包大小（字节）
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
 	int64 PackageSize;
-
-	/// 版本链（更新包的历史版本）
-	UPROPERTY(BlueprintReadOnly, Category = "Version")
-	TArray<FString> PatchChain;
 
 	FHotUpdateEditorVersionInfo()
 		: PackageKind(EHotUpdatePackageKind::Base)

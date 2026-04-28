@@ -24,8 +24,16 @@ public:
 	/** 全量 Cook */
 	static bool CookAssets(EHotUpdatePlatform Platform);
 
-	/** 增量 Cook 指定资源 */
+	/** 增量 Cook 指定资源（不含依赖收集） */
 	static bool CookAssets(EHotUpdatePlatform Platform, const TArray<FString>& AssetsToCook);
+
+	/**
+	 * 收集硬依赖并过滤引擎资产（必须在主线程调用）
+	 * 统一入口，供 PatchPackageBuilder 和 CustomPackageBuilder 共用
+	 * @param AssetsToCook 要 Cook 的资源列表（Long Package Name 格式）
+	 * @return 包含硬依赖的资源列表（已过滤引擎资产）
+	 */
+	static TArray<FString> CollectDependenciesAndFilterEngine(const TArray<FString>& AssetsToCook);
 
 	// ==================== 路径转换函数 ====================
 

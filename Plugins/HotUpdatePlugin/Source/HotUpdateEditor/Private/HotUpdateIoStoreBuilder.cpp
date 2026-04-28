@@ -351,10 +351,14 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 			// 配套文件的基础名需要去掉主文件的扩展名
 			// 例如：Lvl_TopDown.umap -> Lvl_TopDown（配套文件是 Lvl_TopDown.uexp）
 			FString PakInternalBaseFilename = FPaths::GetBaseFilename(PakInternalPath);
-			// 如果 PakInternalBaseFilename 包含扩展名，去掉它
+			// 如果 PakInternalBaseFilename 包含扩展名（GetBaseFilename 只去除最后一个），去掉它
 			if (PakInternalBaseFilename.Contains(TEXT(".")))
 			{
-				PakInternalBaseFilename = FPaths::GetBaseFilename(BaseFilename);
+				int32 DotPos = PakInternalBaseFilename.Find(TEXT("."), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+				if (DotPos != INDEX_NONE)
+				{
+					PakInternalBaseFilename = PakInternalBaseFilename.Left(DotPos);
+				}
 			}
 
 			static const TArray<FString> CompanionExtensions = { TEXT("uexp"), TEXT("ubulk"), TEXT("ubulk2") };

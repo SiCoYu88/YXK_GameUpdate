@@ -103,12 +103,6 @@ private:
 		int64& OutPatchSize,
 		FString& OutErrorMessage);
 
-	/** 加载基础版本容器信息（全量热更新） */
-	bool LoadBaseContainerInfos(
-		const FString& BaseContainerDir,
-		TArray<FHotUpdateContainerInfo>& OutContainers,
-		TMap<FString, FString>& OutFilesHash,
-		TMap<FString, int64>& OutFilesSize);
 
 	/** 从 Manifest 加载 Patch 容器引用 */
 	bool LoadPatchContainersFromManifest(
@@ -149,20 +143,16 @@ private:
 		FHotUpdateBaseManifestData& OutData,
 		FString& OutErrorMessage);
 
-	/** 计算差异（兼容版本，不含 Sizes） */
+	/** 计算差异（包含 Sizes） */
 	static bool ComputeDiff(
 		const TArray<FString>& CurrentAssets,
 		const TMap<FString, FString>& CurrentHashes,
+		const TMap<FString, int64>& CurrentSizes,
 		const TMap<FString, FString>& BaseHashes,
+		const TMap<FString, int64>& BaseSizes,
 		TArray<FString>& OutChangedAssets,
 		FHotUpdateDiffReport& OutReport);
 
-	/** 加载基础版本容器信息（静态版本，用于目录扫描） */
-	static bool LoadBaseContainersStatic(
-		const FString& ContainerDirectory,
-		TArray<FHotUpdateContainerInfo>& OutContainers,
-		TMap<FString, FString>& OutFilesHash,
-		TMap<FString, int64>& OutFilesSize);
 
 	/** 生成 Manifest */
 	bool GenerateManifest(
@@ -170,9 +160,7 @@ private:
 		const FString& PatchUtocPath,
 		const FString& PatchUcasPath,
 		const FHotUpdateDiffReport& DiffReport,
-		const TArray<FHotUpdateContainerInfo>& BaseContainers = TArray<FHotUpdateContainerInfo>(),
-		const TMap<FString, FString>& BaseContainerFilesHash = TMap<FString, FString>(),
-		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>()) const;
+		const TArray<FHotUpdateContainerInfo>& BaseContainers = TArray<FHotUpdateContainerInfo>()) const;
 
 	/** 更新进度 */
 	void UpdateProgress(

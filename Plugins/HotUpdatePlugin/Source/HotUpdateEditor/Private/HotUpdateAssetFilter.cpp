@@ -111,16 +111,6 @@ bool FHotUpdateAssetFilter::MatchesFilterRule(
 		return false;
 	}
 
-	// 检查资产类型过滤
-	if (Rule.AssetTypes.Num() > 0 && AssetRegistry)
-	{
-		FString AssetTypeName = GetAssetTypeName(AssetPath, AssetRegistry);
-		if (!Rule.AssetTypes.Contains(AssetTypeName))
-		{
-			return false;
-		}
-	}
-
 	return true;
 }
 

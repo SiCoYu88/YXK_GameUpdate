@@ -616,9 +616,7 @@ void FHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 	// 配置 ChunkAnalysisConfig
 	FHotUpdateChunkAnalysisConfig ChunkConfig = CurrentConfig.MinimalPackageConfig.PatchChunkConfig;
 	ChunkConfig.ChunkStrategy = CurrentConfig.MinimalPackageConfig.PatchChunkStrategy;
-	ChunkConfig.BaseChunkIdStart = 1;   // 热更资源从 Chunk 1 开始
-	ChunkConfig.PatchChunkIdStart = 1;
-	// 确保 SizeBasedConfig.ChunkIdStart 也从 1 开始（按大小分包时使用）
+
 	if (ChunkConfig.SizeBasedConfig.ChunkIdStart < 1)
 	{
 		ChunkConfig.SizeBasedConfig.ChunkIdStart = 1;

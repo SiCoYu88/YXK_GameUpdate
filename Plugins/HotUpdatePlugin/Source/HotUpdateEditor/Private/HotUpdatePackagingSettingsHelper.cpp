@@ -301,10 +301,9 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FD
 
 	for (const FString& File : Visitor.FoundFiles)
 	{
-		// PakPath: /{ProjectName}/Content/Setting/txt_pak.txt（用于 filemanifest.json 的 filePath）
-		FString PakPath = File;
-		FPaths::MakePathRelativeTo(PakPath, *ContentDir);
-		PakPath = TEXT("/") + FString(FApp::GetProjectName()) / TEXT("Content") / PakPath;
-		OutStagedFiles.Add(File);
+		// 直接存储磁盘绝对路径，后续差异计算可直接使用
+		// manifest 生成阶段会调用 FilePathToContentMountPath 转换为虚拟路径
+		FString AbsolutePath = FPaths::ConvertRelativePathToFull(File);
+		OutStagedFiles.Add(AbsolutePath);
 	}
 }
