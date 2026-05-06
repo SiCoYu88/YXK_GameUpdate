@@ -58,6 +58,9 @@ private:
 	/** 刷新按钮回调 */
 	FReply OnRefreshClicked();
 
+	/** 删除版本文件夹 */
+	void DeleteVersionDirectory(const FString& PlatformDir, const FString& VersionString);
+
 	/** 显示删除确认对话框 */
 	bool ShowDeleteConfirmationDialog(const FString& VersionString);
 

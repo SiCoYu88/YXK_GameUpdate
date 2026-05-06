@@ -240,17 +240,6 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 
 		// 使用 HotUpdatePackageHelper::IsUAssetFile 区分 UE 资产和 Non-asset 文件
 		bool bIsUAsset = FHotUpdatePackageHelper::IsUAssetFile(AssetPath);
-		// 无扩展名时，尝试通过 FPackageName 判断
-		if (!bIsUAsset && FPaths::GetExtension(AssetPath).IsEmpty())
-		{
-			FString Filename;
-			if (FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
-			{
-				FString AbsolutePath = FPaths::ConvertRelativePathToFull(Filename);
-				bIsUAsset = FPaths::FileExists(AbsolutePath + TEXT(".umap")) ||
-							FPaths::FileExists(AbsolutePath + TEXT(".uasset"));
-			}
-		}
 
 		FString DiskPath;
 

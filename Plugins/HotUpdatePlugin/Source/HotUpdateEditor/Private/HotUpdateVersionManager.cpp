@@ -211,6 +211,13 @@ bool FHotUpdateVersionManager::VersionExists(const FString& VersionString, EHotU
 	return PlatformMap && PlatformMap->Contains(Platform);
 }
 
+void FHotUpdateVersionManager::ReloadRegistry()
+{
+	FScopeLock Lock(&RegistryLock);
+	bRegistryLoaded = false;
+	VersionRegistry.Empty();
+}
+
 bool FHotUpdateVersionManager::LoadVersionRegistry()
 {
 	FString RegistryPath = GetVersionRootDir() / TEXT("VersionRegistry.json");

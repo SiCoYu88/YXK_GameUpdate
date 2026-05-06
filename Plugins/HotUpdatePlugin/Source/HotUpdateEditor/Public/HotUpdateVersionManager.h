@@ -64,6 +64,11 @@ public:
 	 */
 	bool VersionExists(const FString& VersionString, EHotUpdatePlatform Platform);
 
+	/**
+	 * 强制重新加载版本注册表
+	 */
+	void ReloadRegistry();
+
 private:
 	/**
 	 * 加载版本注册表

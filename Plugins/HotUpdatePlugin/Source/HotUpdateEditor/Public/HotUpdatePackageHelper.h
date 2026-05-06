@@ -37,22 +37,6 @@ public:
 
 	// ==================== 路径转换函数 ====================
 
-	/**
-	 * 判断插件属于引擎还是项目，返回 Cooked 目录的 SubDir
-	 * @param PluginPath "Plugins/NNE/NNEDenoiser/Content/" 格式
-	 * @return "Engine/Plugins/..." 或 "{ProjectName}/Plugins/..."
-	 */
-	static FString GetPluginCookedSubDir(const FString& PluginPath);
-
-	/**
-	 * 将 FilePathRoot 规范化为 Pak 挂载格式
-	 * FilePathRoot 可能是绝对路径或相对路径，需要转换为标准 Pak 格式
-	 * @param FilePathRoot FPackageName::TryGetMountPointForPath 返回的 FilePathRoot
-	 * @param PackageNameRoot 对应的虚拟路径根（如 /Game/、/Engine/）
-	 * @return Pak 挂载根路径，如 ../../../GameUpdate/Content/ 或 ../../../Engine/Content/
-	 */
-	static FString NormalizeFilePathRootToPakMount(const FString& FilePathRoot, const FString& PackageNameRoot);
-
 	/** 资源路径 -> Cooked 文件路径 */
 	static FString GetCookedAssetPath(const FString& AssetPath, const FString& CookedPlatformDir);
 
@@ -138,11 +122,11 @@ public:
 	static FString GetCookedPlatformDir(EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat AndroidTextureFormat);
 
 private:
-	/** 规范化路径分隔符，统一使用正斜杠 */
-	static FString NormalizePathToForwardSlash(const FString& Path);
-
 	/** 确保路径末尾有斜杠 */
 	static FString EnsureTrailingSlash(const FString& Path);
+
+	/** 获取平台目录名（含 Android 纹理格式后缀） */
+	static FString GetPlatformDirName(EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat TextureFormat);
 
 	/** 获取规范化后的引擎/项目目录（带末尾斜杠） */
 	struct FNormalizedDirectories
@@ -156,4 +140,13 @@ private:
 
 	/** 从路径中提取 Plugins/ 开始的相对部分 */
 	static FString ExtractPluginsRelativePath(const FString& Path);
+
+	/** 判断插件属于引擎还是项目，返回 Cooked 目录的 SubDir */
+	static FString GetPluginCookedSubDir(const FString& PluginPath);
+
+	/** 将 FilePathRoot 规范化为 Pak 挂载格式（../../../ 开头） */
+	static FString NormalizeFilePathRootToPakMount(const FString& FilePathRoot, const FString& PackageNameRoot);
+
+	/** 在 CookedBaseDir 下查找 .umap/.uasset 文件（优先 .umap） */
+	static FString FindCookedFileWithFallback(const FString& CookedBaseDir, const FString& RelPath);
 };

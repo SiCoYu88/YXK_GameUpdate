@@ -215,13 +215,6 @@ TArray<FString> FHotUpdatePackageHelper::CollectDependenciesAndFilterEngine(cons
 
 // ==================== 私有辅助函数 ====================
 
-FString FHotUpdatePackageHelper::NormalizePathToForwardSlash(const FString& Path)
-{
-	FString Result = Path;
-	Result.ReplaceCharInline('\\', '/');
-	return Result;
-}
-
 FString FHotUpdatePackageHelper::EnsureTrailingSlash(const FString& Path)
 {
 	if (!Path.EndsWith(TEXT("/")))
@@ -235,10 +228,10 @@ FHotUpdatePackageHelper::FNormalizedDirectories FHotUpdatePackageHelper::GetNorm
 {
 	FNormalizedDirectories Dirs;
 
-	Dirs.EngineDir = NormalizePathToForwardSlash(FPaths::EngineDir());
-	Dirs.ProjectDir = NormalizePathToForwardSlash(FPaths::ProjectDir());
-	Dirs.EnginePluginsDir = NormalizePathToForwardSlash(FPaths::EnginePluginsDir());
-	Dirs.ProjectPluginsDir = NormalizePathToForwardSlash(FPaths::ProjectPluginsDir());
+	Dirs.EngineDir = FPaths::EngineDir();
+	Dirs.ProjectDir = FPaths::ProjectDir();
+	Dirs.EnginePluginsDir = FPaths::EnginePluginsDir();
+	Dirs.ProjectPluginsDir = FPaths::ProjectPluginsDir();
 
 	Dirs.EngineDir = EnsureTrailingSlash(Dirs.EngineDir);
 	Dirs.ProjectDir = EnsureTrailingSlash(Dirs.ProjectDir);
@@ -256,6 +249,26 @@ FString FHotUpdatePackageHelper::ExtractPluginsRelativePath(const FString& Path)
 		return TEXT("");
 	}
 	return Path.RightChop(PluginsIdx);
+}
+
+FString FHotUpdatePackageHelper::FindCookedFileWithFallback(const FString& CookedBaseDir, const FString& RelPath)
+{
+	// 去除可能残留的扩展名
+	FString CleanRelPath = RelPath;
+	CleanRelPath.RemoveFromEnd(TEXT(".uasset"));
+	CleanRelPath.RemoveFromEnd(TEXT(".umap"));
+	const FString BasePath = FPaths::Combine(CookedBaseDir, CleanRelPath);
+
+	// 优先 .umap，然后 .uasset
+	if (FPaths::FileExists(BasePath + TEXT(".umap")))
+	{
+		return BasePath + TEXT(".umap");
+	}
+	if (FPaths::FileExists(BasePath + TEXT(".uasset")))
+	{
+		return BasePath + TEXT(".uasset");
+	}
+	return TEXT("");
 }
 
 FString FHotUpdatePackageHelper::GetPluginCookedSubDir(const FString& PluginPath)
@@ -283,7 +296,8 @@ FString FHotUpdatePackageHelper::GetPluginCookedSubDir(const FString& PluginPath
 
 FString FHotUpdatePackageHelper::NormalizeFilePathRootToPakMount(const FString& FilePathRoot, const FString& PackageNameRoot)
 {
-	FString Result = NormalizePathToForwardSlash(FilePathRoot);
+	FString Result = FilePathRoot;
+	FPaths::NormalizeFilename(Result);
 
 	// 如果已经是 Pak 格式（以 ../../../ 开头），直接使用
 	if (Result.StartsWith(TEXT("../../../")))
@@ -430,28 +444,13 @@ FString FHotUpdatePackageHelper::GetCookedAssetPath(const FString& AssetPath, co
 		CookedBaseDir = FPaths::Combine(CookedPlatformDir, CleanRoot);
 	}
 
-	// 拼接完整 Cooked 路径
-	// 注意：RelPath 可能包含扩展名（当 AssetPath 是绝对路径时），需要去除
-	FString RelPathStr = FString(RelPath);
-	RelPathStr.RemoveFromEnd(TEXT(".uasset"));
-	RelPathStr.RemoveFromEnd(TEXT(".umap"));
-	const FString CookedPath = FPaths::Combine(CookedBaseDir, RelPathStr);
-
-	// 检查文件是否存在（优先 .umap，然后 .uasset）
-	FString UmapPath = CookedPath + TEXT(".umap");
-	if (FPaths::FileExists(UmapPath))
+	FString Result = FindCookedFileWithFallback(CookedBaseDir, FString(RelPath));
+	if (Result.IsEmpty())
 	{
-		return UmapPath;
+		UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetCookedAssetPath: 文件不存在 (AssetPath: %s, CookedBaseDir: %s, RelPath: %s)"),
+			*AssetPath, *CookedBaseDir, *FString(RelPath));
 	}
-	FString UassetPath = CookedPath + TEXT(".uasset");
-	if (FPaths::FileExists(UassetPath))
-	{
-		return UassetPath;
-	}
-
-	UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetCookedAssetPath: 文件不存在: %s (AssetPath: %s, CookedBaseDir: %s, RelPath: %s)"),
-		*CookedPath, *AssetPath, *CookedBaseDir, *FString(RelPath));
-	return TEXT("");
+	return Result;
 }
 
 FString FHotUpdatePackageHelper::GetAssetSourcePath(const FString& AssetPath)
@@ -464,9 +463,8 @@ FString FHotUpdatePackageHelper::GetAssetSourcePath(const FString& AssetPath)
 		return AssetPath;
 	}
 
-	FString NormalizedPath = NormalizePathToForwardSlash(AssetPath);
+	FString NormalizedPath = AssetPath;
 	FPaths::NormalizeFilename(NormalizedPath);
-	NormalizedPath = NormalizePathToForwardSlash(NormalizedPath);
 
 	// 情况1：已经是绝对路径（磁盘路径），直接检查文件是否存在
 	if (NormalizedPath.Contains(TEXT(":/")) || NormalizedPath.StartsWith(TEXT("/")))
@@ -481,36 +479,22 @@ FString FHotUpdatePackageHelper::GetAssetSourcePath(const FString& AssetPath)
 				return NormalizedPath;
 			}
 			// 尝试去掉扩展名再检查
-			FString BasePath = NormalizedPath;
-			BasePath.RemoveFromEnd(TEXT(".uasset"));
-			BasePath.RemoveFromEnd(TEXT(".umap"));
-			if (FPaths::FileExists(BasePath + TEXT(".umap")))
+			FString FallbackResult = FindCookedFileWithFallback(NormalizedPath, FString());
+			if (!FallbackResult.IsEmpty())
 			{
-				return BasePath + TEXT(".umap");
-			}
-			if (FPaths::FileExists(BasePath + TEXT(".uasset")))
-			{
-				return BasePath + TEXT(".uasset");
+				return FallbackResult;
 			}
 			UE_LOG(LogHotUpdateEditor, Display, TEXT("GetAssetSourcePath: 绝对路径文件不存在: %s"), *NormalizedPath);
 			return TEXT("");
 		}
 	}
 
-	// 情况2：虚拟路径（Long Package Name），使用 UE API 转换
+	// 情况2：虚拟路径（Long Package Name），使用引擎标准 API 查找
 	FString Filename;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
+	if (FPackageName::DoesPackageExist(AssetPath, &Filename))
 	{
-		UE_LOG(LogHotUpdateEditor, Display, TEXT("GetAssetSourcePath FAILED TryConvertLongPackageNameToFilename : %s"), *AssetPath);
-		return TEXT("");
+		return FPaths::ConvertRelativePathToFull(Filename);
 	}
-
-	const FString AbsolutePath = FPaths::ConvertRelativePathToFull(Filename);
-
-	if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
-		return AbsolutePath + TEXT(".umap");
-	if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
-		return AbsolutePath + TEXT(".uasset");
 
 	UE_LOG(LogHotUpdateEditor, Display, TEXT("GetAssetSourcePath FAILED: %s"), *AssetPath);
 	return TEXT("");
@@ -545,12 +529,12 @@ FString FHotUpdatePackageHelper::FilePathToLongPackageName(const FString& FileNa
 
 FString FHotUpdatePackageHelper::FilePathToContentMountPath(const FString& FileName)
 {
-	FString Result = NormalizePathToForwardSlash(FileName);
+	FString Result = FileName;
 	FPaths::NormalizeFilename(Result);
-	Result = NormalizePathToForwardSlash(Result);
 
 	// 检查是否在项目 Content 目录下
-	FString ProjectContentDir = NormalizePathToForwardSlash(FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir()));
+	FString ProjectContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
+	FPaths::NormalizeFilename(ProjectContentDir);
 	ProjectContentDir = EnsureTrailingSlash(ProjectContentDir);
 
 	if (Result.StartsWith(ProjectContentDir))
@@ -588,7 +572,8 @@ FString FHotUpdatePackageHelper::GetAssetPakMountPath(const FString& AssetPath)
 	}
 
 	// 拼接完整 Pak 内部路径
-	FString Result = NormalizePathToForwardSlash(PakMountRoot + FString(RelPath));
+	FString Result = PakMountRoot + FString(RelPath);
+	FPaths::NormalizeFilename(Result);
 
 	return Result;
 }
@@ -616,16 +601,20 @@ bool FHotUpdatePackageHelper::IsValidPackagePath(const FString& AssetPath)
 		return false;
 	}
 
-	// 检查扩展名是否是 UE 资产格式
 	FString Extension = FPaths::GetExtension(AssetPath);
+
+	// 虚拟路径（无扩展名）：用引擎标准 API 验证路径格式和挂载点
+	if (Extension.IsEmpty())
+	{
+		return FPackageName::IsValidLongPackageName(AssetPath, false);
+	}
+
+	// 磁盘路径：需有 .uasset/.umap 扩展名
 	if (Extension != TEXT("uasset") && Extension != TEXT("umap"))
 	{
-		// 非 UE 资产文件不需要 Cook
 		return false;
 	}
 
-	// UE 标准 API：TryConvertFilenameToLongPackageName
-	// 如果能成功将磁盘路径转换为 Long Package Name，说明是有效的 UE Package
 	FString LongPackageName;
 	return FPackageName::TryConvertFilenameToLongPackageName(AssetPath, LongPackageName);
 }
@@ -639,7 +628,12 @@ bool FHotUpdatePackageHelper::IsUAssetExtension(const FString& Extension)
 
 bool FHotUpdatePackageHelper::IsUAssetFile(const FString& FilePath)
 {
+	// 虚拟路径（无扩展名，以 / 开头）是 UE 资产
 	FString Extension = FPaths::GetExtension(FilePath);
+	if (Extension.IsEmpty() && FilePath.StartsWith(TEXT("/")))
+	{
+		return true;
+	}
 	return IsUAssetExtension(Extension);
 }
 
@@ -668,7 +662,8 @@ FString FHotUpdatePackageHelper::NormalizeAssetPath(const FString& Path)
 
 FString FHotUpdatePackageHelper::VirtualPathToDiskPath(const FString& VirtualPath)
 {
-	FString Result = NormalizePathToForwardSlash(VirtualPath);
+	FString Result = VirtualPath;
+	FPaths::NormalizeFilename(Result);
 
 	if (Result.StartsWith(TEXT("/Game/")))
 	{
@@ -707,53 +702,45 @@ FString FHotUpdatePackageHelper::VirtualPathToDiskPath(const FString& VirtualPat
 		// 不做任何处理
 	}
 
-	Result.ReplaceCharInline('\\', '/');
+	FPaths::NormalizeFilename(Result);
 	return Result;
 }
 
 // ==================== 平台目录函数实现 ====================
 
-FString FHotUpdatePackageHelper::GetCookedPlatformDir(EHotUpdatePlatform Platform)
+FString FHotUpdatePackageHelper::GetPlatformDirName(EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat TextureFormat)
 {
-	FString PlatformStr;
 	switch (Platform)
 	{
-	case EHotUpdatePlatform::Windows: PlatformStr = TEXT("Windows"); break;
-	case EHotUpdatePlatform::Android: PlatformStr = TEXT("Android"); break;
-	case EHotUpdatePlatform::IOS:     PlatformStr = TEXT("IOS"); break;
-	default: PlatformStr = TEXT("Windows"); break;
+	case EHotUpdatePlatform::Windows:
+		return TEXT("Windows");
+	case EHotUpdatePlatform::Android:
+		{
+			if (TextureFormat != EHotUpdateAndroidTextureFormat::Multi)
+			{
+				switch (TextureFormat)
+				{
+				case EHotUpdateAndroidTextureFormat::ETC2: return TEXT("Android_ETC2");
+				case EHotUpdateAndroidTextureFormat::ASTC: return TEXT("Android_ASTC");
+				case EHotUpdateAndroidTextureFormat::DXT:  return TEXT("Android_DXT");
+				default: break;
+				}
+			}
+			return TEXT("Android");
+		}
+	case EHotUpdatePlatform::IOS:
+		return TEXT("IOS");
+	default:
+		return TEXT("Windows");
 	}
-	return FPaths::ProjectSavedDir() / TEXT("Cooked") / PlatformStr;
+}
+
+FString FHotUpdatePackageHelper::GetCookedPlatformDir(EHotUpdatePlatform Platform)
+{
+	return GetCookedPlatformDir(Platform, EHotUpdateAndroidTextureFormat::Multi);
 }
 
 FString FHotUpdatePackageHelper::GetCookedPlatformDir(EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat AndroidTextureFormat)
 {
-	FString PlatformDir;
-	switch (Platform)
-	{
-	case EHotUpdatePlatform::Windows: PlatformDir = TEXT("Windows"); break;
-	case EHotUpdatePlatform::Android:
-		{
-			PlatformDir = TEXT("Android");
-			if (AndroidTextureFormat != EHotUpdateAndroidTextureFormat::Multi)
-			{
-				FString TextureFormat;
-				switch (AndroidTextureFormat)
-				{
-				case EHotUpdateAndroidTextureFormat::ETC2: TextureFormat = TEXT("ETC2"); break;
-				case EHotUpdateAndroidTextureFormat::ASTC: TextureFormat = TEXT("ASTC"); break;
-				case EHotUpdateAndroidTextureFormat::DXT:  TextureFormat = TEXT("DXT");  break;
-				default: break;
-				}
-				if (!TextureFormat.IsEmpty())
-				{
-					PlatformDir = FString::Printf(TEXT("Android_%s"), *TextureFormat);
-				}
-			}
-		}
-		break;
-	case EHotUpdatePlatform::IOS: PlatformDir = TEXT("IOS"); break;
-	default: PlatformDir = TEXT("Windows"); break;
-	}
-	return FPaths::ProjectSavedDir() / TEXT("Cooked") / PlatformDir;
+	return FPaths::ProjectSavedDir() / TEXT("Cooked") / GetPlatformDirName(Platform, AndroidTextureFormat);
 }
