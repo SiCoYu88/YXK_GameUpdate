@@ -829,6 +829,10 @@ enum class EHotUpdateAndroidTextureFormat : uint8
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPackageProgressDelegate, const FHotUpdatePackageProgress&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPatchPackageCompleteDelegate, const FHotUpdatePatchPackageResult&);
 
+// 基础版本构建委托
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildProgressDelegate, const FHotUpdateBaseVersionBuildProgress&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildCompleteDelegate, const FHotUpdateBaseVersionBuildResult&);
+
 /**
  * 打包进度辅助函数
  * 提供进度更新和广播的公共逻辑
@@ -877,23 +881,37 @@ namespace HotUpdateProgressHelper
 		OnProgressDelegate.Broadcast(Progress);
 	}
 
-		/**
-		 * 广播进度（异步模式，在游戏线程执行）
-		 * 注意：此函数通过值捕获进度和委托，确保异步执行时数据安全
-		 * @param Progress 进度数据
-		 * @param OnProgressDelegate 进度委托引用
-		 */
-		inline void BroadcastProgressAsync(
-			const FHotUpdatePackageProgress& Progress,
-			FOnPackageProgressDelegate& OnProgressDelegate)
+	/**
+	 * 广播进度（异步模式，在游戏线程执行）
+	 * 注意：此函数通过值捕获进度和委托，确保异步执行时数据安全
+	 * @param Progress 进度数据
+	 * @param OnProgressDelegate 进度委托引用
+	 */
+	inline void BroadcastProgressAsync(
+		const FHotUpdatePackageProgress& Progress,
+		FOnPackageProgressDelegate& OnProgressDelegate)
+	{
+		// 值捕获：避免异步执行时引用悬空
+		FOnPackageProgressDelegate DelegateCopy = OnProgressDelegate;
+		AsyncTask(ENamedThreads::GameThread, [DelegateCopy, Progress]()
 		{
-			// 值捕获：避免异步执行时引用悬空
-			FOnPackageProgressDelegate DelegateCopy = OnProgressDelegate;
-			AsyncTask(ENamedThreads::GameThread, [DelegateCopy, Progress]()
-			{
-				DelegateCopy.Broadcast(Progress);
-			});
-		}
+			DelegateCopy.Broadcast(Progress);
+		});
+	}
+
+	/**
+	 * 广播基础版本构建进度（异步模式，在游戏线程执行）
+	 */
+	inline void BroadcastBaseBuildProgressAsync(
+		const FHotUpdateBaseVersionBuildProgress& Progress,
+		FOnBaseVersionBuildProgressDelegate& OnProgressDelegate)
+	{
+		FOnBaseVersionBuildProgressDelegate DelegateCopy = OnProgressDelegate;
+		AsyncTask(ENamedThreads::GameThread, [DelegateCopy, Progress]()
+		{
+			DelegateCopy.Broadcast(Progress);
+		});
+	}
 }
 
 

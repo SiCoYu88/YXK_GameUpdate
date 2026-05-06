@@ -3,22 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Widgets/SWidget.h"
-#include "Widgets/SCompoundWidget.h"
-#include "Widgets/Input/SComboBox.h"
+#include "Widgets/HotUpdatePackagingPanelBase.h"
 #include "Widgets/Views/SListView.h"
-#include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "HotUpdateEditorTypes.h"
 
 class FHotUpdateCustomPackageBuilder;
-class SProgressBar;
 
 /**
  * 自定义打包面板
  * 支持选择 uasset 文件和非资产文件两种模式，快速打出热更包进行功能测试
  */
-class HOTUPDATEEDITOR_API SHotUpdateCustomPackagingPanel : public SCompoundWidget
+class HOTUPDATEEDITOR_API SHotUpdateCustomPackagingPanel : public SHotUpdatePackagingPanelBase
 {
 public:
 	SLATE_BEGIN_ARGS(SHotUpdateCustomPackagingPanel) {}
@@ -65,16 +61,12 @@ private:
 	/** 是否正在打包 */
 	bool IsPackaging() const { return bIsPackaging; }
 
-	/** 平台选择相关 */
-	TSharedRef<SWidget> GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem);
-	void OnPlatformSelected(TSharedPtr<EHotUpdatePlatform> InItem, ESelectInfo::Type SelectInfo);
-	FText GetSelectedPlatformText() const;
+	/** 取消当前构建（基类纯虚函数实现） */
+	virtual void CancelCurrentBuild() override;
 
-	/** Android 纹理格式选择相关 */
-	TSharedRef<SWidget> GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem);
-	void OnAndroidTextureFormatSelected(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem, ESelectInfo::Type SelectInfo);
-	FText GetSelectedAndroidTextureFormatText() const;
-	EVisibility GetAndroidTextureFormatVisibility() const;
+	/** 配置字段访问 */
+	virtual EHotUpdatePlatform& GetTargetPlatformRef() override { return PackageConfig.Platform; }
+	virtual EHotUpdateAndroidTextureFormat& GetTargetTextureFormatRef() override { return PackageConfig.AndroidTextureFormat; }
 
 	/** uasset 文件选择相关 */
 	FReply OnSelectUassetFilesClicked();
@@ -96,9 +88,6 @@ private:
 	void UpdatePackageConfigFromUI();
 
 private:
-	/** 父窗口 */
-	TSharedPtr<SWindow> ParentWindow;
-
 	/** 打包配置 */
 	FHotUpdatePackageConfig PackageConfig;
 
@@ -111,43 +100,6 @@ private:
 	/** 更新包构建器 */
 	TSharedPtr<FHotUpdateCustomPackageBuilder> CustomPackageBuilder;
 
-	/** 是否正在打包 */
-	bool bIsPackaging;
-
-	/** 进度通知 */
-	TSharedPtr<SNotificationItem> ProgressNotification;
-
-	// ===== UI控件 =====
-	/** 输出目录输入框 */
-	TSharedPtr<SEditableText> OutputDirTextBox;
-
-	/** 状态文本 */
-	TSharedPtr<STextBlock> StatusTextBlock;
-
-	/** 进度文本 */
-	TSharedPtr<STextBlock> ProgressTextBlock;
-
-	/** 进度条 */
-	TSharedPtr<SProgressBar> ProgressBar;
-
-	/** 平台选择下拉框 */
-	TSharedPtr<SComboBox<TSharedPtr<EHotUpdatePlatform>>> PlatformComboBox;
-
-	/** 平台选项列表 */
-	TArray<TSharedPtr<EHotUpdatePlatform>> PlatformOptions;
-
-	/** 当前选择的平台 */
-	TSharedPtr<EHotUpdatePlatform> SelectedPlatform;
-
-	/** Android 纹理格式下拉框 */
-	TSharedPtr<SComboBox<TSharedPtr<EHotUpdateAndroidTextureFormat>>> AndroidTextureFormatComboBox;
-
-	/** Android 纹理格式选项列表 */
-	TArray<TSharedPtr<EHotUpdateAndroidTextureFormat>> AndroidTextureFormatOptions;
-
-	/** 当前选择的 Android 纹理格式 */
-	TSharedPtr<EHotUpdateAndroidTextureFormat> SelectedAndroidTextureFormat;
-
 	/** uasset 列表视图 */
 	TSharedPtr<SListView<TSharedPtr<FString>>> UassetListView;
 
@@ -159,12 +111,6 @@ private:
 
 	/** 非资产列表项 */
 	TArray<TSharedPtr<FString>> NonAssetListItems;
-
-	/** 打包按钮 */
-	TSharedPtr<SButton> PackageButton;
-
-	/** 取消按钮 */
-	TSharedPtr<SButton> CancelButton;
 
 	/** 跳过 Cook 复选框 */
 	TSharedPtr<SCheckBox> SkipCookCheckBox;

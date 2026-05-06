@@ -9,11 +9,6 @@
 
 class IAssetRegistry;
 
-
-// 构建进度委托 (使用多播委托以支持 Slate 控件绑定)
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildProgressDelegate, const FHotUpdateBaseVersionBuildProgress&);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildCompleteDelegate, const FHotUpdateBaseVersionBuildResult&);
-
 /**
  * 基础版本构建配置
  */
@@ -204,6 +199,16 @@ private:
 	 * 更新进度
 	 */
 	void UpdateProgress(const FString& Stage, float Percent, const FString& Message);
+
+	/**
+	 * 广播构建结果（根据同步/异步模式选择直接广播或调度到游戏线程）
+	 */
+	void BroadcastBuildResult(const FHotUpdateBaseVersionBuildResult& Result);
+
+	/**
+	 * 创建错误结果
+	 */
+	static FHotUpdateBaseVersionBuildResult MakeErrorResult(const FString& ErrorMessage);
 
 private:
 	/// 构建配置

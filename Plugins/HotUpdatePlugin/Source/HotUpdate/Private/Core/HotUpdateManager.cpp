@@ -291,9 +291,9 @@ void UHotUpdateManager::HandleVersionCheckResponse(TSharedPtr<IHttpRequest> Requ
 		for (const FHotUpdateContainerInfo& Container : ServerManifest.Containers)
 		{
 			VersionCheckResult.UpdateContainers.Add(Container);
-			VersionCheckResult.IncrementalDownloadSize += Container.UtocSize + Container.UcasSize;
+			VersionCheckResult.IncrementalDownloadSize += Container.UtocFile.Size + Container.UcasFile.Size;
 			UE_LOG(LogHotUpdate, Log, TEXT("Container to download: %s (size: %.2f MB)"),
-				*Container.ContainerName, (Container.UtocSize + Container.UcasSize) / (1024.0 * 1024.0));
+				*Container.ContainerName, (Container.UtocFile.Size + Container.UcasFile.Size) / (1024.0 * 1024.0));
 		}
 
 		VersionCheckResult.AddedContainerCount = ServerManifest.Containers.Num();
@@ -624,10 +624,10 @@ bool UHotUpdateManager::VerifyDownloadedFiles()
 	// 验证容器文件（IoStore 模式）
 	for (const FHotUpdateContainerInfo& Container : VersionCheckResult.UpdateContainers)
 	{
-		if (!Container.UtocPath.IsEmpty())
+		if (!Container.UtocFile.Path.IsEmpty())
 		{
-			FString UtocFilePath = SaveDir / Container.UtocPath;
-			if (VerifyFile(UtocFilePath, Container.UtocSize, Container.UtocHash))
+			FString UtocFilePath = SaveDir / Container.UtocFile.Path;
+			if (VerifyFile(UtocFilePath, Container.UtocFile.Size, Container.UtocFile.Hash))
 			{
 				VerifiedCount++;
 				UE_LOG(LogHotUpdate, Verbose, TEXT("Verified container utoc: %s"), *UtocFilePath);
@@ -638,10 +638,10 @@ bool UHotUpdateManager::VerifyDownloadedFiles()
 			}
 		}
 
-		if (!Container.UcasPath.IsEmpty())
+		if (!Container.UcasFile.Path.IsEmpty())
 		{
-			FString UcasFilePath = SaveDir / Container.UcasPath;
-			if (VerifyFile(UcasFilePath, Container.UcasSize, Container.UcasHash))
+			FString UcasFilePath = SaveDir / Container.UcasFile.Path;
+			if (VerifyFile(UcasFilePath, Container.UcasFile.Size, Container.UcasFile.Hash))
 			{
 				VerifiedCount++;
 				UE_LOG(LogHotUpdate, Verbose, TEXT("Verified container ucas: %s"), *UcasFilePath);
@@ -730,13 +730,13 @@ void UHotUpdateManager::CalculateIncrementalDownload(
 			const FHotUpdateContainerInfo* LocalContainer = *LocalContainerPtr;
 
 			// 对比 Hash 判断是否需要更新
-			if (LocalContainer->UcasHash != ServerContainer.UcasHash)
+			if (LocalContainer->UcasFile.Hash != ServerContainer.UcasFile.Hash)
 			{
 				bNeedDownload = true;
 				Reason = TEXT("ucas hash changed");
 				OutResult.ModifiedContainerCount++;
 			}
-			else if (LocalContainer->UtocHash != ServerContainer.UtocHash)
+			else if (LocalContainer->UtocFile.Hash != ServerContainer.UtocFile.Hash)
 			{
 				bNeedDownload = true;
 				Reason = TEXT("utoc hash changed");
@@ -747,16 +747,16 @@ void UHotUpdateManager::CalculateIncrementalDownload(
 		if (bNeedDownload)
 		{
 			OutResult.UpdateContainers.Add(ServerContainer);
-			OutResult.IncrementalDownloadSize += ServerContainer.UtocSize + ServerContainer.UcasSize;
+			OutResult.IncrementalDownloadSize += ServerContainer.UtocFile.Size + ServerContainer.UcasFile.Size;
 
 			UE_LOG(LogHotUpdate, Log, TEXT("Need download container: %s (reason: %s, size: %.2f MB)"),
 				*ServerContainer.ContainerName, *Reason,
-				(ServerContainer.UtocSize + ServerContainer.UcasSize) / (1024.0 * 1024.0));
+				(ServerContainer.UtocFile.Size + ServerContainer.UcasFile.Size) / (1024.0 * 1024.0));
 		}
 		else
 		{
 			OutResult.SkippedContainerCount++;
-			OutResult.SkippedTotalSize += ServerContainer.UtocSize + ServerContainer.UcasSize;
+			OutResult.SkippedTotalSize += ServerContainer.UtocFile.Size + ServerContainer.UcasFile.Size;
 			UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped container: %s (unchanged)"),
 				*ServerContainer.ContainerName);
 		}

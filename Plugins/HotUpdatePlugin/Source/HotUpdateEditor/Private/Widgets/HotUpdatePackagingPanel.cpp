@@ -38,20 +38,8 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 	ParentWindow = InArgs._ParentWindow;
 	bIsPackaging = false;
 
-	// 固定为从项目配置读取
-
-	// 初始化平台选项
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::Windows)));
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::Android)));
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::IOS)));
-	SelectedPlatform = PlatformOptions[0];
-
-	// 初始化 Android 纹理格式选项
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)));
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::ASTC)));
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::DXT)));
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::Multi)));
-	SelectedAndroidTextureFormat = AndroidTextureFormatOptions[0];
+	InitPlatformOptions();
+	InitAndroidTextureFormatOptions();
 
 	// 初始化分包策略选项
 	ChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::None)));
@@ -236,30 +224,6 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateRightPanel()
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateBasicSettings()
 {
-	auto MakeSettingRow = [](const FText& Label, TSharedRef<SWidget> ValueWidget) -> TSharedRef<SWidget>
-	{
-		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(SBox)
-				.WidthOverride(90)
-				[
-					SNew(STextBlock)
-					.Text(Label)
-					.Font(FHotUpdateEditorStyle::GetNormalFont())
-					.ColorAndOpacity(FHotUpdateEditorStyle::GetTextSecondaryColor())
-				]
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.Padding(8, 4)
-			.VAlign(VAlign_Center)
-			[
-				ValueWidget
-			];
-	};
 
 	return SNew(SVerticalBox)
 		// 目标平台
@@ -795,120 +759,40 @@ FReply SHotUpdatePackagingPanel::OnCancelClicked()
 {
 	if (bIsPackaging)
 	{
-		if (PatchPackageBuilder && PatchPackageBuilder->IsBuilding())
-		{
-			PatchPackageBuilder->CancelBuild();
-		}
+		CancelCurrentBuild();
 		bIsPackaging = false;
-		StatusTextBlock->SetText(LOCTEXT("CancelledStatus", "已取消"));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetWarningColor());
-		ProgressBar->SetPercent(0.0f);
+		SetStatusText(LOCTEXT("CancelledStatus", "已取消").ToString(), FHotUpdateEditorStyle::GetWarningColor());
+		ResetProgressUI();
 	}
 	return FReply::Handled();
+}
+
+void SHotUpdatePackagingPanel::CancelCurrentBuild()
+{
+	if (PatchPackageBuilder && PatchPackageBuilder->IsBuilding())
+	{
+		PatchPackageBuilder->CancelBuild();
+	}
 }
 
 FReply SHotUpdatePackagingPanel::OnBrowseOutputDirectory()
 {
-	TSharedPtr<SWindow> ParentWindowPtr = ParentWindow.IsValid() ? ParentWindow : FSlateApplication::Get().FindBestParentWindowForDialogs(nullptr);
-
-	void* ParentWindowHandle = ParentWindowPtr.IsValid() ? ParentWindowPtr->GetNativeWindow()->GetOSWindowHandle() : nullptr;
-
-	FString SelectedDirectory;
-	if (FDesktopPlatformModule::Get()->OpenDirectoryDialog(
-		ParentWindowHandle,
-		LOCTEXT("SelectOutputDir", "选择输出目录").ToString(),
-		PackageConfig.OutputDirectory.Path,
-		SelectedDirectory))
-	{
-		PackageConfig.OutputDirectory.Path = SelectedDirectory;
-		if (OutputDirTextBox.IsValid())
-		{
-			OutputDirTextBox->SetText(FText::FromString(SelectedDirectory));
-		}
-	}
-
-	return FReply::Handled();
+	return BrowseOutputDirectory(PackageConfig.OutputDirectory.Path, OutputDirTextBox, PackageConfig.OutputDirectory.Path);
 }
 
 void SHotUpdatePackagingPanel::OnPackagingComplete(const FHotUpdatePatchPackageResult& Result)
 {
-	bIsPackaging = false;
-
-	// 清除进度通知
-	if (ProgressNotification.IsValid())
-	{
-		ProgressNotification->ExpireAndFadeout();
-		ProgressNotification.Reset();
-	}
-
-	if (Result.bSuccess)
-	{
-		FString SuccessMsg = FString::Printf(
-			TEXT("打包成功! 文件: %s, 大小: %.2f MB, 资源数: %d"),
-			*Result.PatchUtocPath,
-			Result.PatchSize / (1024.0 * 1024.0),
-			Result.ChangedAssetCount
-		);
-		StatusTextBlock->SetText(FText::FromString(SuccessMsg));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetSuccessColor());
-		ProgressBar->SetPercent(1.0f);
-
-		FHotUpdateNotificationHelper::ShowSuccessNotification(FText::FromString(SuccessMsg), FPaths::GetPath(Result.PatchUtocPath));
-	}
-	else
-	{
-		StatusTextBlock->SetText(FText::FromString(Result.ErrorMessage));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetErrorColor());
-
-		FHotUpdateNotificationHelper::ShowErrorNotification(FText::FromString(Result.ErrorMessage));
-	}
-
-	ProgressTextBlock->SetText(FText::GetEmpty());
+	HandlePackagingCompleteImpl(Result.bSuccess, Result.PatchUtocPath, Result.PatchSize, Result.ChangedAssetCount, Result.ErrorMessage);
 }
 
 void SHotUpdatePackagingPanel::OnPackagingProgress(const FHotUpdatePackageProgress& Progress)
 {
-	FString ProgressMsg = FString::Printf(
-		TEXT("%s - %d/%d 文件"),
-		*Progress.StageDescription.ToString(),
-		Progress.ProcessedFiles,
-		Progress.TotalFiles
-	);
-	ProgressTextBlock->SetText(FText::FromString(ProgressMsg));
-
-	float Percent = Progress.GetProgressPercent() / 100.0f;
-	ProgressBar->SetPercent(Percent);
+	HandlePackagingProgress(Progress);
 }
 
 bool SHotUpdatePackagingPanel::IsPackagingEnabled() const
 {
 	return !bIsPackaging;
-}
-
-TSharedRef<SWidget> SHotUpdatePackagingPanel::GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem)
-{
-	return SNew(STextBlock)
-		.Text(HotUpdateUtils::GetPlatformDisplayName(*InItem))
-		.Font(FHotUpdateEditorStyle::GetNormalFont())
-		.Margin(FMargin(4, 2));
-}
-
-void SHotUpdatePackagingPanel::OnPlatformSelected(TSharedPtr<EHotUpdatePlatform> InItem, ESelectInfo::Type SelectInfo)
-{
-	SelectedPlatform = InItem;
-	if (InItem.IsValid())
-	{
-		PackageConfig.Platform = *InItem;
-	}
-}
-
-FText SHotUpdatePackagingPanel::GetSelectedPlatformText() const
-{
-	if (SelectedPlatform.IsValid())
-	{
-		return HotUpdateUtils::GetPlatformDisplayName(*SelectedPlatform);
-	}
-	return HotUpdateUtils::GetPlatformDisplayName(EHotUpdatePlatform::Windows);
 }
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::GenerateChunkStrategyComboBoxItem(TSharedPtr<EHotUpdateChunkStrategy> InItem)
@@ -935,41 +819,6 @@ FText SHotUpdatePackagingPanel::GetSelectedChunkStrategyText() const
 		return HotUpdateUtils::GetChunkStrategyDisplayName(*SelectedChunkStrategy);
 	}
 	return HotUpdateUtils::GetChunkStrategyDisplayName(EHotUpdateChunkStrategy::Size);
-}
-
-TSharedRef<SWidget> SHotUpdatePackagingPanel::GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem)
-{
-	return SNew(STextBlock)
-		.Text(HotUpdateUtils::GetTextureFormatDisplayName(*InItem))
-		.Font(FHotUpdateEditorStyle::GetNormalFont())
-		.Margin(FMargin(4, 2));
-}
-
-void SHotUpdatePackagingPanel::OnAndroidTextureFormatSelected(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem, ESelectInfo::Type SelectInfo)
-{
-	SelectedAndroidTextureFormat = InItem;
-	if (InItem.IsValid())
-	{
-		PackageConfig.AndroidTextureFormat = *InItem;
-	}
-}
-
-FText SHotUpdatePackagingPanel::GetSelectedAndroidTextureFormatText() const
-{
-	if (SelectedAndroidTextureFormat.IsValid())
-	{
-		return HotUpdateUtils::GetTextureFormatDisplayName(*SelectedAndroidTextureFormat);
-	}
-	return HotUpdateUtils::GetTextureFormatDisplayName(EHotUpdateAndroidTextureFormat::ETC2);
-}
-
-EVisibility SHotUpdatePackagingPanel::GetAndroidTextureFormatVisibility() const
-{
-	if (SelectedPlatform.IsValid() && *SelectedPlatform == EHotUpdatePlatform::Android)
-	{
-		return EVisibility::Visible;
-	}
-	return EVisibility::Collapsed;
 }
 
 void SHotUpdatePackagingPanel::UpdateProgressBar(float Percent)

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
+#include "Widgets/HotUpdatePackagingPanelBase.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Views/SListView.h"
@@ -11,14 +11,12 @@
 #include "HotUpdateEditorTypes.h"
 #include "HotUpdateBaseVersionBuilder.h"
 
-class SProgressBar;
-
 class FHotUpdateBaseVersionBuilder;
 
 /**
  * 基础版本构建面板
  */
-class HOTUPDATEEDITOR_API SHotUpdateBaseVersionPanel : public SCompoundWidget
+class HOTUPDATEEDITOR_API SHotUpdateBaseVersionPanel : public SHotUpdatePackagingPanelBase
 {
 public:
 	SLATE_BEGIN_ARGS(SHotUpdateBaseVersionPanel) {}
@@ -53,21 +51,18 @@ private:
 	/** 选择输出目录 */
 	FReply OnBrowseOutputDirectory();
 
-	/** 平台选择 */
-	TSharedRef<SWidget> GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem);
-	void OnPlatformSelected(TSharedPtr<EHotUpdatePlatform> InItem, ESelectInfo::Type SelectInfo);
-	FText GetSelectedPlatformText() const;
+	/** 取消当前构建 */
+	virtual void CancelCurrentBuild() override;
+
+	/** 配置字段访问 */
+	virtual EHotUpdatePlatform& GetTargetPlatformRef() override { return BuildConfig.Platform; }
+	virtual EHotUpdateAndroidTextureFormat& GetTargetTextureFormatRef() override { return BuildConfig.AndroidTextureFormat; }
 
 	/** 构建配置选择 */
 	TSharedRef<SWidget> GenerateBuildConfigComboBoxItem(TSharedPtr<EHotUpdateBuildConfiguration> InItem);
 	void OnBuildConfigSelected(TSharedPtr<EHotUpdateBuildConfiguration> InItem, ESelectInfo::Type SelectInfo);
 	FText GetSelectedBuildConfigText() const;
 
-	/** Android 纹理格式选择 */
-	TSharedRef<SWidget> GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem);
-	void OnAndroidTextureFormatSelected(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem, ESelectInfo::Type SelectInfo);
-	FText GetSelectedAndroidTextureFormatText() const;
-	EVisibility GetAndroidTextureFormatVisibility() const;
 
 	/** 最小包配置项可见性（启用最小包时才显示子配置） */
 	EVisibility GetMinimalPackageSettingsVisibility() const;
@@ -90,39 +85,23 @@ private:
 	float GetMaxChunkSizeValue() const;
 
 private:
-	/** 父窗口 */
-	TSharedPtr<SWindow> ParentWindow;
-
 	/** 构建器 */
 	TSharedPtr<FHotUpdateBaseVersionBuilder> Builder;
 
 	/** 构建配置 */
 	FHotUpdateBaseVersionBuildConfig BuildConfig;
 
-	/** 是否正在构建 */
-	bool bIsBuilding = false;
-
 	// UI 控件
 	TSharedPtr<SEditableText> VersionTextBox;
-	TSharedPtr<SEditableText> OutputDirTextBox;
 	TSharedPtr<SComboBox<TSharedPtr<EHotUpdateBuildConfiguration>>> BuildConfigComboBox;
 	TArray<TSharedPtr<EHotUpdateBuildConfiguration>> BuildConfigOptions;
 	TSharedPtr<EHotUpdateBuildConfiguration> SelectedBuildConfig;
 
-	/** Android 纹理格式选择 */
-	TSharedPtr<SComboBox<TSharedPtr<EHotUpdateAndroidTextureFormat>>> AndroidTextureFormatComboBox;
-	TArray<TSharedPtr<EHotUpdateAndroidTextureFormat>> AndroidTextureFormatOptions;
-	TSharedPtr<EHotUpdateAndroidTextureFormat> SelectedAndroidTextureFormat;
 	TSharedPtr<SCheckBox> SkipBuildCheckBox;
-	TSharedPtr<STextBlock> StatusTextBlock;
-	TSharedPtr<SProgressBar> ProgressBar;
+
+	// UI 控件
 	TSharedPtr<SButton> BuildButton;
 	TSharedPtr<SButton> CancelButton;
-
-	/** 平台选择 */
-	TSharedPtr<SComboBox<TSharedPtr<EHotUpdatePlatform>>> PlatformComboBox;
-	TArray<TSharedPtr<EHotUpdatePlatform>> PlatformOptions;
-	TSharedPtr<EHotUpdatePlatform> SelectedPlatform;
 
 	// ===== 最小包配置 UI 控件 =====
 	/** 启用最小包模式复选框 */

@@ -101,8 +101,48 @@ private:
 	/** 创建错误结果 */
 	static FHotUpdatePatchPackageResult MakeErrorResult(const FString& ErrorMessage);
 
+	// === BuildPatchPackage 阶段上下文 ===
+	struct FPatchBuildContext
+	{
+		FHotUpdateBaseManifestData BaseManifestData;
+		FString ActualBaseVersion;
+		TArray<FString> AssetSourcePaths;
+		TArray<FString> NonAssetSourcePaths;
+		TMap<FString, FString> CurrentAssetHashes;
+		TMap<FString, int64> CurrentAssetSizes;
+		TMap<FString, FString> CurrentNonAssetHashes;
+		TMap<FString, int64> CurrentNonAssetSizes;
+		FHotUpdateDiffReport DiffReport;
+		TArray<FString> ChangedAssetPaths;
+		TArray<FString> ChangedNonAssetPaths;
+		FString OutputDir;
+		FString PatchUtocPath;
+		FString PatchUcasPath;
+		int64 PatchSize = 0;
+		TArray<FHotUpdateContainerInfo> BaseContainers;
+		// 绝对路径 -> 资产虚拟路径（/Game/...）映射，用于 manifest 生成
+		TMap<FString, FString> AbsolutePathToAssetPath;
+	};
+
+	// === BuildPatchPackage 阶段函数 ===
+
+	/** 阶段1: 验证配置、编译项目、Cook 资源 */
+	bool PrepareBuild(FPatchBuildContext& Ctx);
+
+	/** 阶段2: 加载基础 Manifest、收集资源、计算差异、增量 Cook */
+	bool ComputeChanges(FPatchBuildContext& Ctx);
+
+	/** 阶段3: 确定输出目录、创建 Patch IoStore 容器 */
+	bool CreatePatchContainer(FPatchBuildContext& Ctx);
+
+	/** 阶段4: 解析基础容器引用、生成 Manifest、注册版本 */
+	bool BuildAndRegisterManifest(FPatchBuildContext& Ctx, FHotUpdatePatchPackageResult& Result);
+
 	/// 构建配置
 	FHotUpdatePatchPackageConfig CurrentConfig;
+
+	/// 当前构建结果（阶段函数失败时设置）
+	FHotUpdatePatchPackageResult CurrentResult;
 
 	/// 是否正在构建
 	std::atomic<bool> bIsBuilding;

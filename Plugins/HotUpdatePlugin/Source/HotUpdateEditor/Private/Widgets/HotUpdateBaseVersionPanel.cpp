@@ -27,26 +27,16 @@
 void SHotUpdateBaseVersionPanel::Construct(const FArguments& InArgs)
 {
 	ParentWindow = InArgs._ParentWindow;
-	bIsBuilding = false;
+	bIsPackaging = false;
 
-	// 初始化平台选项
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::Windows)));
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::Android)));
-		PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::IOS)));
-	SelectedPlatform = PlatformOptions[0];
+	InitPlatformOptions();
+	InitAndroidTextureFormatOptions();
 
 	// 初始化构建配置选项
 	BuildConfigOptions.Add(MakeShareable(new EHotUpdateBuildConfiguration(EHotUpdateBuildConfiguration::DebugGame)));
 	BuildConfigOptions.Add(MakeShareable(new EHotUpdateBuildConfiguration(EHotUpdateBuildConfiguration::Development)));
 	BuildConfigOptions.Add(MakeShareable(new EHotUpdateBuildConfiguration(EHotUpdateBuildConfiguration::Shipping)));
 	SelectedBuildConfig = BuildConfigOptions[1];
-
-		// 初始化 Android 纹理格式选项
-		AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)));
-		AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::ASTC)));
-		AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::DXT)));
-		AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::Multi)));
-		SelectedAndroidTextureFormat = AndroidTextureFormatOptions[0];
 
 	// 初始化依赖策略选项
 	DependencyStrategyOptions.Add(MakeShareable(new EHotUpdateDependencyStrategy(EHotUpdateDependencyStrategy::IncludeAll)));
@@ -147,31 +137,6 @@ SHotUpdateBaseVersionPanel::~SHotUpdateBaseVersionPanel()
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateConfigSection()
 {
-	auto MakeSettingRow = [](const FText& Label, TSharedRef<SWidget> ValueWidget) -> TSharedRef<SWidget>
-	{
-		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(SBox)
-				.WidthOverride(100)
-				[
-					SNew(STextBlock)
-					.Text(Label)
-					.Font(FHotUpdateEditorStyle::GetNormalFont())
-					.ColorAndOpacity(FHotUpdateEditorStyle::GetTextSecondaryColor())
-				]
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.Padding(8, 4)
-			.VAlign(VAlign_Center)
-			[
-				ValueWidget
-			];
-	};
-
 	return SNew(SVerticalBox)
 	// 说明文字
 	+ SVerticalBox::Slot()
@@ -194,7 +159,8 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateConfigSection()
 			SAssignNew(VersionTextBox, SEditableText)
 			.Text(FText::FromString(BuildConfig.VersionString))
 			.HintText(LOCTEXT("VersionHint", "如 1.0.0"))
-			.Font(FHotUpdateEditorStyle::GetNormalFont())
+			.Font(FHotUpdateEditorStyle::GetNormalFont()),
+			100.0f
 		)
 	]
 	// 目标平台
@@ -213,7 +179,8 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateConfigSection()
 				SNew(STextBlock)
 				.Text(this, &SHotUpdateBaseVersionPanel::GetSelectedPlatformText)
 				.Font(FHotUpdateEditorStyle::GetNormalFont())
-			]
+			],
+			100.0f
 		)
 	]
 	// 输出目录
@@ -278,7 +245,8 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateConfigSection()
 					SNew(STextBlock)
 					.Text(this, &SHotUpdateBaseVersionPanel::GetSelectedBuildConfigText)
 					.Font(FHotUpdateEditorStyle::GetNormalFont())
-				]
+				],
+				100.0f
 			)
 		]
 		// Android 纹理格式（仅 Android 平台可见）
@@ -302,7 +270,8 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateConfigSection()
 						SNew(STextBlock)
 						.Text(this, &SHotUpdateBaseVersionPanel::GetSelectedAndroidTextureFormatText)
 						.Font(FHotUpdateEditorStyle::GetNormalFont())
-					]
+					],
+					100.0f
 				)
 			]
 		]
@@ -378,7 +347,7 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateProgressSection()
 			.Text(LOCTEXT("Cancel", "取消"))
 			.ButtonStyle(FAppStyle::Get(), "Button")
 			.IsEnabled(this, &SHotUpdateBaseVersionPanel::CanBuild)
-			.Visibility_Lambda([this]() { return bIsBuilding ? EVisibility::Visible : EVisibility::Collapsed; })
+			.Visibility_Lambda([this]() { return bIsPackaging ? EVisibility::Visible : EVisibility::Collapsed; })
 			.OnClicked(this, &SHotUpdateBaseVersionPanel::OnCancelClicked)
 		]
 		+ SHorizontalBox::Slot()
@@ -397,7 +366,7 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::CreateProgressSection()
 
 FReply SHotUpdateBaseVersionPanel::OnBuildClicked()
 {
-	if (bIsBuilding)
+	if (bIsPackaging)
 	{
 		return FReply::Handled();
 	}
@@ -431,7 +400,7 @@ FReply SHotUpdateBaseVersionPanel::OnBuildClicked()
 	}
 
 	// 开始构建
-	bIsBuilding = true;
+	bIsPackaging = true;
 	StatusTextBlock->SetText(LOCTEXT("BuildingStatus", "正在构建..."));
 	StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetProcessingColor());
 	ProgressBar->SetPercent(0.0f);
@@ -443,19 +412,27 @@ FReply SHotUpdateBaseVersionPanel::OnBuildClicked()
 
 FReply SHotUpdateBaseVersionPanel::OnCancelClicked()
 {
-	if (bIsBuilding)
+	if (bIsPackaging)
 	{
-		Builder->CancelBuild();
-		bIsBuilding = false;
-		StatusTextBlock->SetText(LOCTEXT("CancelledStatus", "已取消"));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetWarningColor());
+		CancelCurrentBuild();
+		bIsPackaging = false;
+		SetStatusText(LOCTEXT("CancelledStatus", "已取消").ToString(), FHotUpdateEditorStyle::GetWarningColor());
+		ResetProgressUI();
 	}
 	return FReply::Handled();
 }
 
+void SHotUpdateBaseVersionPanel::CancelCurrentBuild()
+{
+	if (Builder && Builder->IsBuilding())
+	{
+		Builder->CancelBuild();
+	}
+}
+
 bool SHotUpdateBaseVersionPanel::CanBuild() const
 {
-	return !bIsBuilding;
+	return !bIsPackaging;
 }
 
 void SHotUpdateBaseVersionPanel::OnBuildProgress(const FHotUpdateBaseVersionBuildProgress& Progress)
@@ -468,7 +445,7 @@ void SHotUpdateBaseVersionPanel::OnBuildProgress(const FHotUpdateBaseVersionBuil
 
 void SHotUpdateBaseVersionPanel::OnBuildComplete(const FHotUpdateBaseVersionBuildResult& Result)
 {
-	bIsBuilding = false;
+	bIsPackaging = false;
 
 	if (Result.bSuccess)
 	{
@@ -496,51 +473,7 @@ void SHotUpdateBaseVersionPanel::OnBuildComplete(const FHotUpdateBaseVersionBuil
 
 FReply SHotUpdateBaseVersionPanel::OnBrowseOutputDirectory()
 {
-	TSharedPtr<SWindow> ParentWindowPtr = ParentWindow.IsValid() ? ParentWindow : FSlateApplication::Get().FindBestParentWindowForDialogs(nullptr);
-
-	void* ParentWindowHandle = ParentWindowPtr.IsValid() ? ParentWindowPtr->GetNativeWindow()->GetOSWindowHandle() : nullptr;
-
-	FString SelectedDirectory;
-	if (FDesktopPlatformModule::Get()->OpenDirectoryDialog(
-		ParentWindowHandle,
-		LOCTEXT("SelectOutputDir", "选择输出目录").ToString(),
-		BuildConfig.OutputDirectory,
-		SelectedDirectory))
-	{
-		BuildConfig.OutputDirectory = SelectedDirectory;
-		if (OutputDirTextBox.IsValid())
-		{
-			OutputDirTextBox->SetText(FText::FromString(SelectedDirectory));
-		}
-	}
-
-	return FReply::Handled();
-}
-
-TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem)
-{
-	return SNew(STextBlock)
-		.Text(HotUpdateUtils::GetPlatformDisplayName(*InItem))
-		.Font(FHotUpdateEditorStyle::GetNormalFont())
-		.Margin(FMargin(4, 2));
-}
-
-void SHotUpdateBaseVersionPanel::OnPlatformSelected(TSharedPtr<EHotUpdatePlatform> InItem, ESelectInfo::Type SelectInfo)
-{
-	SelectedPlatform = InItem;
-	if (InItem.IsValid())
-	{
-		BuildConfig.Platform = *InItem;
-	}
-}
-
-FText SHotUpdateBaseVersionPanel::GetSelectedPlatformText() const
-{
-	if (SelectedPlatform.IsValid())
-	{
-		return HotUpdateUtils::GetPlatformDisplayName(*SelectedPlatform);
-	}
-	return HotUpdateUtils::GetPlatformDisplayName(EHotUpdatePlatform::Windows);
+	return BrowseOutputDirectory(BuildConfig.OutputDirectory, OutputDirTextBox, BuildConfig.OutputDirectory);
 }
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GenerateBuildConfigComboBoxItem(TSharedPtr<EHotUpdateBuildConfiguration> InItem)
@@ -878,41 +811,6 @@ FText SHotUpdateBaseVersionPanel::GetSelectedPatchChunkStrategyText() const
 float SHotUpdateBaseVersionPanel::GetMaxChunkSizeValue() const
 {
 	return static_cast<float>(BuildConfig.MinimalPackageConfig.PatchChunkConfig.SizeBasedConfig.MaxChunkSizeMB);
-}
-
-TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem)
-{
-	return SNew(STextBlock)
-		.Text(HotUpdateUtils::GetTextureFormatDisplayName(*InItem))
-		.Font(FHotUpdateEditorStyle::GetNormalFont())
-		.Margin(FMargin(4, 2));
-}
-
-void SHotUpdateBaseVersionPanel::OnAndroidTextureFormatSelected(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem, ESelectInfo::Type SelectInfo)
-{
-	SelectedAndroidTextureFormat = InItem;
-	if (InItem.IsValid())
-	{
-		BuildConfig.AndroidTextureFormat = *InItem;
-	}
-}
-
-FText SHotUpdateBaseVersionPanel::GetSelectedAndroidTextureFormatText() const
-{
-	if (SelectedAndroidTextureFormat.IsValid())
-	{
-		return HotUpdateUtils::GetTextureFormatDisplayName(*SelectedAndroidTextureFormat);
-	}
-	return HotUpdateUtils::GetTextureFormatDisplayName(EHotUpdateAndroidTextureFormat::ETC2);
-}
-
-EVisibility SHotUpdateBaseVersionPanel::GetAndroidTextureFormatVisibility() const
-{
-	if (SelectedPlatform.IsValid() && *SelectedPlatform == EHotUpdatePlatform::Android)
-	{
-		return EVisibility::Visible;
-	}
-	return EVisibility::Collapsed;
 }
 
 EVisibility SHotUpdateBaseVersionPanel::GetMinimalPackageSettingsVisibility() const

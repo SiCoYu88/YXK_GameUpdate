@@ -219,6 +219,24 @@ struct HOTUPDATE_API FHotUpdateProgress
 };
 
 /**
+ * 文件信息（路径、大小、Hash 三元组）
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATE_API FHotUpdateFileInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "File")
+	FString Path;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "File")
+	int64 Size = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "File")
+	FString Hash;
+};
+
+/**
  * IoStore 容器文件信息
  */
 USTRUCT(BlueprintType)
@@ -230,43 +248,17 @@ struct HOTUPDATE_API FHotUpdateContainerInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
 	FString ContainerName;
 
-	/// .utoc 文件相对路径
+	/// .utoc 文件信息
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	FString UtocPath;
+	FHotUpdateFileInfo UtocFile;
 
-	/// .utoc 文件大小（字节）
+	/// .ucas 文件信息
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	int64 UtocSize;
+	FHotUpdateFileInfo UcasFile;
 
-	/// .utoc 文件 SHA1 Hash
+	/// .pak 文件信息（传统 Pak 格式）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	FString UtocHash;
-
-	/// .ucas 文件相对路径
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	FString UcasPath;
-
-	/// .ucas 文件大小（字节）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	int64 UcasSize;
-
-	/// .ucas 文件 SHA1 Hash
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	FString UcasHash;
-
-	/// === 传统 Pak 格式字段 ===
-
-	/// .pak 文件相对路径（传统 Pak 格式）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	FString PakPath;
-
-	/// .pak 文件大小（字节）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	int64 PakSize;
-
-	/// .pak 文件 SHA1 Hash
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
-	FString PakHash;
+	FHotUpdateFileInfo PakFile;
 
 	/// 容器类型（基础包/更新包）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
@@ -281,10 +273,7 @@ struct HOTUPDATE_API FHotUpdateContainerInfo
 	FString CustomDownloadUrl;
 
 	FHotUpdateContainerInfo()
-		: UtocSize(0)
-		, UcasSize(0)
-		, PakSize(0)
-		, ContainerType(EHotUpdateContainerType::Base)
+		: ContainerType(EHotUpdateContainerType::Base)
 		, Version(TEXT(""))
 	{
 	}

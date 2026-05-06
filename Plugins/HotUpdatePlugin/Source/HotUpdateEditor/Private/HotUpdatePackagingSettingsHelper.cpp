@@ -80,9 +80,10 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 			FHotUpdateAssetFilter::GetDependencies(AssetPath, AssetRegistry, EHotUpdateDependencyStrategy::IncludeAll, AllPaths);
 		}
 
+		TSet<FString> ExistingPaths(Result.AssetPaths);
 		for (auto& Each : AllPaths)
 		{
-			if (!FHotUpdatePackageHelper::IsExternalAsset(Each))
+			if (!ExistingPaths.Contains(Each) && !FHotUpdatePackageHelper::IsExternalAsset(Each))
 			{
 				Result.AssetPaths.Add(Each);
 			}
