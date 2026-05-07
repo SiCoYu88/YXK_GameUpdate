@@ -2,6 +2,7 @@
 
 #include "Widgets/HotUpdateVersionDiffTypes.h"
 #include "HotUpdateDiffTool.h"
+#include "HotUpdateUtils.h"
 #include "EditorStyleSet.h"
 
 #define LOCTEXT_NAMESPACE "HotUpdateVersionDiff"
@@ -129,7 +130,7 @@ FText SHotUpdateDiffTreeItem::GetSizeText() const
 	if (!Item.IsValid() || Item->bIsFolder) return FText::GetEmpty();
 
 	int64 Size = Item->DiffInfo.NewSize > 0 ? Item->DiffInfo.NewSize : Item->DiffInfo.OldSize;
-	return FText::FromString(FHotUpdateDiffTool::FormatFileSize(Size));
+	return FText::FromString(HotUpdateUtils::FormatFileSize(Size));
 }
 
 #undef LOCTEXT_NAMESPACE

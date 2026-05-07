@@ -33,10 +33,10 @@ public class HotUpdateEditor : ModuleRules
 			"WorkspaceMenuStructure",
 			"MainFrame",
 			"DesktopPlatform",
+			
 			"Json",
-			"JsonUtilities",
-			"AssetTools",
 			"PakFile",
+			"AssetTools",
 			"DeveloperToolSettings"
 		});
 	}

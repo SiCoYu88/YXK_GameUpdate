@@ -108,74 +108,6 @@ FHotUpdateEditorVersionInfo FHotUpdateVersionManager::GetVersionInfo(const FStri
 	return FHotUpdateEditorVersionInfo();
 }
 
-FHotUpdateVersionChain FHotUpdateVersionManager::GetVersionChain(const FString& BaseVersion, EHotUpdatePlatform Platform)
-{
-	FHotUpdateVersionChain Chain;
-	Chain.BaseVersion = BaseVersion;
-	Chain.Platform = Platform;
-
-	FScopeLock Lock(&RegistryLock);
-
-	if (!bRegistryLoaded)
-	{
-		LoadVersionRegistry();
-	}
-
-	// 收集所有基于此基础版本的 Patch
-	TArray<FHotUpdateEditorVersionInfo> AllVersions = GetVersionHistory(Platform);
-
-	for (const FHotUpdateEditorVersionInfo& Info : AllVersions)
-	{
-		if (Info.PackageKind == EHotUpdatePackageKind::Patch && Info.BaseVersion == BaseVersion)
-		{
-			Chain.PatchChain.Add(Info.VersionString);
-		}
-	}
-
-	// 排序 Patch 链
-	Chain.PatchChain.Sort([this](const FString& A, const FString& B)
-	{
-		return CompareVersions(A, B) < 0;
-	});
-
-	// 当前版本是 Patch 链中最后一个
-	if (Chain.PatchChain.Num() > 0)
-	{
-		Chain.CurrentVersion = Chain.PatchChain.Last();
-	}
-	else
-	{
-		Chain.CurrentVersion = BaseVersion;
-	}
-
-	return Chain;
-}
-
-FString FHotUpdateVersionManager::GetLatestVersion(EHotUpdatePlatform Platform)
-{
-	FScopeLock Lock(&RegistryLock);
-
-	if (!bRegistryLoaded)
-	{
-		LoadVersionRegistry();
-	}
-
-	FString LatestVersion;
-
-	for (const auto& Pair : VersionRegistry)
-	{
-		if (const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform))
-		{
-			if (LatestVersion.IsEmpty() || CompareVersions(Info->VersionString, LatestVersion) > 0)
-			{
-				LatestVersion = Info->VersionString;
-			}
-		}
-	}
-
-	return LatestVersion;
-}
-
 TArray<FString> FHotUpdateVersionManager::GetBaseVersions(EHotUpdatePlatform Platform)
 {
 	FScopeLock Lock(&RegistryLock);
@@ -279,6 +211,13 @@ bool FHotUpdateVersionManager::VersionExists(const FString& VersionString, EHotU
 	return PlatformMap && PlatformMap->Contains(Platform);
 }
 
+void FHotUpdateVersionManager::ReloadRegistry()
+{
+	FScopeLock Lock(&RegistryLock);
+	bRegistryLoaded = false;
+	VersionRegistry.Empty();
+}
+
 bool FHotUpdateVersionManager::LoadVersionRegistry()
 {
 	FString RegistryPath = GetVersionRootDir() / TEXT("VersionRegistry.json");
@@ -320,11 +259,20 @@ bool FHotUpdateVersionManager::LoadVersionRegistry()
 			Info.PackageKind = static_cast<EHotUpdatePackageKind>(VersionObj->GetIntegerField(TEXT("packageKind")));
 			Info.BaseVersion = VersionObj->GetStringField(TEXT("baseVersion"));
 
-			int32 PlatformIndex = VersionObj->GetIntegerField(TEXT("platform"));
-			Info.Platform = static_cast<EHotUpdatePlatform>(PlatformIndex);
+				int32 PlatformIndex = VersionObj->GetIntegerField(TEXT("platform"));
+				// 边界验证：确保平台索引在有效范围内
+				if (PlatformIndex >= 0 && PlatformIndex <= 2)  // EHotUpdatePlatform: Windows=0, Android=1, IOS=2
+				{
+					Info.Platform = static_cast<EHotUpdatePlatform>(PlatformIndex);
+				}
+				else
+				{
+					UE_LOG(LogHotUpdateEditor, Warning, TEXT("无效的平台索引 %d，使用默认值 Windows"), PlatformIndex);
+					Info.Platform = EHotUpdatePlatform::Windows;
+				}
 
-			FString CreatedTimeStr = VersionObj->GetStringField(TEXT("createdTime"));
-			FDateTime::ParseIso8601(*CreatedTimeStr, Info.CreatedTime);
+				FString CreatedTimeStr = VersionObj->GetStringField(TEXT("createdTime"));
+				FDateTime::ParseIso8601(*CreatedTimeStr, Info.CreatedTime);
 
 			Info.FileManifestPath = VersionObj->GetStringField(TEXT("fileManifestPath"));
 			Info.UtocPath = VersionObj->GetStringField(TEXT("utocPath"));

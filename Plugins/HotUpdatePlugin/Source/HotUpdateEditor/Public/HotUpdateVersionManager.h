@@ -7,29 +7,6 @@
 #include "HAL/CriticalSection.h"
 
 /**
- * 版本链配置
- */
-struct HOTUPDATEEDITOR_API FHotUpdateVersionChain
-{
-	/// 基础版本号
-	FString BaseVersion;
-
-	/// Patch 版本链
-	TArray<FString> PatchChain;
-
-	/// 当前最新版本
-	FString CurrentVersion;
-
-	/// 平台
-	EHotUpdatePlatform Platform;
-
-	FHotUpdateVersionChain()
-		: Platform(EHotUpdatePlatform::Windows)
-	{
-	}
-};
-
-/**
  * 版本管理器
  * 管理基础包和更新包的版本链
  */
@@ -55,16 +32,6 @@ public:
 	 * 获取版本信息
 	 */
 	FHotUpdateEditorVersionInfo GetVersionInfo(const FString& VersionString, EHotUpdatePlatform Platform);
-
-	/**
-	 * 获取版本链
-	 */
-	FHotUpdateVersionChain GetVersionChain(const FString& BaseVersion, EHotUpdatePlatform Platform);
-
-	/**
-	 * 获取最新版本
-	 */
-	FString GetLatestVersion(EHotUpdatePlatform Platform);
 
 	/**
 	 * 获取基础版本列表
@@ -96,6 +63,11 @@ public:
 	 * 检查版本是否存在
 	 */
 	bool VersionExists(const FString& VersionString, EHotUpdatePlatform Platform);
+
+	/**
+	 * 强制重新加载版本注册表
+	 */
+	void ReloadRegistry();
 
 private:
 	/**

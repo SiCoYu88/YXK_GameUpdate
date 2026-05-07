@@ -32,18 +32,8 @@ void SHotUpdateCustomPackagingPanel::Construct(const FArguments& InArgs)
 	ParentWindow = InArgs._ParentWindow;
 	bIsPackaging = false;
 
-	// 初始化平台选项
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::Windows)));
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::Android)));
-	PlatformOptions.Add(MakeShareable(new EHotUpdatePlatform(EHotUpdatePlatform::IOS)));
-	SelectedPlatform = PlatformOptions[0];
-
-	// 初始化 Android 纹理格式选项
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)));
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::ASTC)));
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::DXT)));
-	AndroidTextureFormatOptions.Add(MakeShareable(new EHotUpdateAndroidTextureFormat(EHotUpdateAndroidTextureFormat::Multi)));
-	SelectedAndroidTextureFormat = AndroidTextureFormatOptions[0];
+	InitPlatformOptions();
+	InitAndroidTextureFormatOptions();
 
 	// 创建更新包构建器
 	CustomPackageBuilder = MakeShareable(new FHotUpdateCustomPackageBuilder());
@@ -156,30 +146,6 @@ TSharedRef<SWidget> SHotUpdateCustomPackagingPanel::CreateRightPanel()
 
 TSharedRef<SWidget> SHotUpdateCustomPackagingPanel::CreateBasicSettings()
 {
-	auto MakeSettingRow = [](const FText& Label, TSharedRef<SWidget> ValueWidget) -> TSharedRef<SWidget>
-	{
-		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(SBox)
-				.WidthOverride(90)
-				[
-					SNew(STextBlock)
-					.Text(Label)
-					.Font(FHotUpdateEditorStyle::GetNormalFont())
-					.ColorAndOpacity(FHotUpdateEditorStyle::GetTextSecondaryColor())
-				]
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.Padding(8, 4)
-			.VAlign(VAlign_Center)
-			[
-				ValueWidget
-			];
-	};
 
 	return SNew(SVerticalBox)
 		// Pak优先级
@@ -752,39 +718,25 @@ FReply SHotUpdateCustomPackagingPanel::OnCancelClicked()
 {
 	if (bIsPackaging)
 	{
-		if (CustomPackageBuilder && CustomPackageBuilder->IsBuilding())
-		{
-			CustomPackageBuilder->CancelBuild();
-		}
+		CancelCurrentBuild();
 		bIsPackaging = false;
-		StatusTextBlock->SetText(LOCTEXT("CancelledStatus", "已取消"));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetWarningColor());
-		ProgressBar->SetPercent(0.0f);
+		SetStatusText(LOCTEXT("CancelledStatus", "已取消").ToString(), FHotUpdateEditorStyle::GetWarningColor());
+		ResetProgressUI();
 	}
 	return FReply::Handled();
 }
 
+void SHotUpdateCustomPackagingPanel::CancelCurrentBuild()
+{
+	if (CustomPackageBuilder && CustomPackageBuilder->IsBuilding())
+	{
+		CustomPackageBuilder->CancelBuild();
+	}
+}
+
 FReply SHotUpdateCustomPackagingPanel::OnBrowseOutputDirectory()
 {
-	TSharedPtr<SWindow> ParentWindowPtr = ParentWindow.IsValid() ? ParentWindow : FSlateApplication::Get().FindBestParentWindowForDialogs(nullptr);
-
-	void* ParentWindowHandle = ParentWindowPtr.IsValid() ? ParentWindowPtr->GetNativeWindow()->GetOSWindowHandle() : nullptr;
-
-	FString SelectedDirectory;
-	if (FDesktopPlatformModule::Get()->OpenDirectoryDialog(
-		ParentWindowHandle,
-		LOCTEXT("SelectOutputDir", "选择输出目录").ToString(),
-		PackageConfig.OutputDirectory.Path,
-		SelectedDirectory))
-	{
-		PackageConfig.OutputDirectory.Path = SelectedDirectory;
-		if (OutputDirTextBox.IsValid())
-		{
-			OutputDirTextBox->SetText(FText::FromString(SelectedDirectory));
-		}
-	}
-
-	return FReply::Handled();
+	return BrowseOutputDirectory(PackageConfig.OutputDirectory.Path, OutputDirTextBox, PackageConfig.OutputDirectory.Path);
 }
 
 bool SHotUpdateCustomPackagingPanel::IsPackagingEnabled() const
@@ -798,51 +750,12 @@ bool SHotUpdateCustomPackagingPanel::IsPackagingEnabled() const
 
 void SHotUpdateCustomPackagingPanel::OnPackagingComplete(const FHotUpdateCustomPackageResult& Result)
 {
-	bIsPackaging = false;
-
-	if (ProgressNotification.IsValid())
-	{
-		ProgressNotification->ExpireAndFadeout();
-		ProgressNotification.Reset();
-	}
-
-	if (Result.bSuccess)
-	{
-		FString SuccessMsg = FString::Printf(
-			TEXT("打包成功! 文件: %s, 大小: %.2f MB, 资源数: %d"),
-			*Result.PatchUtocPath,
-			Result.PatchSize / (1024.0 * 1024.0),
-			Result.AssetCount
-		);
-		StatusTextBlock->SetText(FText::FromString(SuccessMsg));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetSuccessColor());
-		ProgressBar->SetPercent(1.0f);
-
-		FHotUpdateNotificationHelper::ShowSuccessNotification(FText::FromString(SuccessMsg), FPaths::GetPath(Result.PatchUtocPath));
-	}
-	else
-	{
-		StatusTextBlock->SetText(FText::FromString(Result.ErrorMessage));
-		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetErrorColor());
-
-		FHotUpdateNotificationHelper::ShowErrorNotification(FText::FromString(Result.ErrorMessage));
-	}
-
-	ProgressTextBlock->SetText(FText::GetEmpty());
+	HandlePackagingCompleteImpl(Result.bSuccess, Result.PatchUtocPath, Result.PatchSize, Result.AssetCount, Result.ErrorMessage);
 }
 
 void SHotUpdateCustomPackagingPanel::OnPackagingProgress(const FHotUpdatePackageProgress& Progress)
 {
-	FString ProgressMsg = FString::Printf(
-		TEXT("%s - %d/%d 文件"),
-		*Progress.StageDescription.ToString(),
-		Progress.ProcessedFiles,
-		Progress.TotalFiles
-	);
-	ProgressTextBlock->SetText(FText::FromString(ProgressMsg));
-
-	float Percent = Progress.GetProgressPercent() / 100.0f;
-	ProgressBar->SetPercent(Percent);
+	HandlePackagingProgress(Progress);
 }
 
 // ===== uasset 文件选择 =====
@@ -1027,88 +940,5 @@ void SHotUpdateCustomPackagingPanel::RefreshNonAssetList()
 }
 
 // ===== 平台选择 =====
-
-TSharedRef<SWidget> SHotUpdateCustomPackagingPanel::GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem)
-{
-	FText PlatformText;
-	switch (*InItem)
-	{
-	case EHotUpdatePlatform::Windows: PlatformText = LOCTEXT("PlatformWindows", "Windows"); break;
-	case EHotUpdatePlatform::Android: PlatformText = LOCTEXT("PlatformAndroid", "Android"); break;
-	case EHotUpdatePlatform::IOS:     PlatformText = LOCTEXT("PlatformIOS", "iOS"); break;
-	}
-	return SNew(STextBlock).Text(PlatformText).Font(FHotUpdateEditorStyle::GetNormalFont()).Margin(FMargin(4, 2));
-}
-
-void SHotUpdateCustomPackagingPanel::OnPlatformSelected(TSharedPtr<EHotUpdatePlatform> InItem, ESelectInfo::Type SelectInfo)
-{
-	SelectedPlatform = InItem;
-	if (InItem.IsValid())
-	{
-		PackageConfig.Platform = *InItem;
-	}
-}
-
-FText SHotUpdateCustomPackagingPanel::GetSelectedPlatformText() const
-{
-	if (SelectedPlatform.IsValid())
-	{
-		switch (*SelectedPlatform)
-		{
-		case EHotUpdatePlatform::Windows: return LOCTEXT("PlatformWindows", "Windows");
-		case EHotUpdatePlatform::Android: return LOCTEXT("PlatformAndroid", "Android");
-		case EHotUpdatePlatform::IOS:     return LOCTEXT("PlatformIOS", "iOS");
-		}
-	}
-	return LOCTEXT("PlatformWindows", "Windows");
-}
-
-// ===== Android 纹理格式 =====
-
-TSharedRef<SWidget> SHotUpdateCustomPackagingPanel::GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem)
-{
-	FText FormatText;
-	switch (*InItem)
-	{
-	case EHotUpdateAndroidTextureFormat::ETC2: FormatText = LOCTEXT("TextureFormatETC2", "ETC2"); break;
-	case EHotUpdateAndroidTextureFormat::ASTC: FormatText = LOCTEXT("TextureFormatASTC", "ASTC"); break;
-	case EHotUpdateAndroidTextureFormat::DXT:  FormatText = LOCTEXT("TextureFormatDXT", "DXT"); break;
-	case EHotUpdateAndroidTextureFormat::Multi: FormatText = LOCTEXT("TextureFormatMulti", "Multi"); break;
-	}
-	return SNew(STextBlock).Text(FormatText).Font(FHotUpdateEditorStyle::GetNormalFont()).Margin(FMargin(4, 2));
-}
-
-void SHotUpdateCustomPackagingPanel::OnAndroidTextureFormatSelected(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem, ESelectInfo::Type SelectInfo)
-{
-	SelectedAndroidTextureFormat = InItem;
-	if (InItem.IsValid())
-	{
-		PackageConfig.AndroidTextureFormat = *InItem;
-	}
-}
-
-FText SHotUpdateCustomPackagingPanel::GetSelectedAndroidTextureFormatText() const
-{
-	if (SelectedAndroidTextureFormat.IsValid())
-	{
-		switch (*SelectedAndroidTextureFormat)
-		{
-		case EHotUpdateAndroidTextureFormat::ETC2: return LOCTEXT("TextureFormatETC2", "ETC2");
-		case EHotUpdateAndroidTextureFormat::ASTC: return LOCTEXT("TextureFormatASTC", "ASTC");
-		case EHotUpdateAndroidTextureFormat::DXT:  return LOCTEXT("TextureFormatDXT", "DXT");
-		case EHotUpdateAndroidTextureFormat::Multi: return LOCTEXT("TextureFormatMulti", "Multi");
-		}
-	}
-	return LOCTEXT("TextureFormatETC2", "ETC2");
-}
-
-EVisibility SHotUpdateCustomPackagingPanel::GetAndroidTextureFormatVisibility() const
-{
-	if (SelectedPlatform.IsValid() && *SelectedPlatform == EHotUpdatePlatform::Android)
-	{
-		return EVisibility::Visible;
-	}
-	return EVisibility::Collapsed;
-}
 
 #undef LOCTEXT_NAMESPACE

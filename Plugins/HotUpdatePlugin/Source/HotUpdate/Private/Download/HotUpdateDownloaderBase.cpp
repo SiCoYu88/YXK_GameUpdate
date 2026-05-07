@@ -24,19 +24,19 @@ void UHotUpdateDownloaderBase::AddContainerDownloadTasks(const TArray<FHotUpdate
 	for (const FHotUpdateContainerInfo& Container : Containers)
 	{
 		// 下载 .utoc 文件
-		if (!Container.UtocPath.IsEmpty() && Container.UtocSize > 0)
+		if (!Container.UtocFile.Path.IsEmpty() && Container.UtocFile.Size > 0)
 		{
-			FString FullUrl = BaseUrl.IsEmpty() ? Container.CustomDownloadUrl : BaseUrl / Container.UtocPath;
-			FString SavePath = SaveDir / Container.UtocPath;
-			AddDownloadTask(FullUrl, SavePath, Container.UtocSize, Container.UtocHash);
+			FString FullUrl = BaseUrl.IsEmpty() ? Container.CustomDownloadUrl : BaseUrl / Container.UtocFile.Path;
+			FString SavePath = SaveDir / Container.UtocFile.Path;
+			AddDownloadTask(FullUrl, SavePath, Container.UtocFile.Size, Container.UtocFile.Hash);
 		}
 
 		// 下载 .ucas 文件
-		if (!Container.UcasPath.IsEmpty() && Container.UcasSize > 0)
+		if (!Container.UcasFile.Path.IsEmpty() && Container.UcasFile.Size > 0)
 		{
-			FString FullUrl = BaseUrl.IsEmpty() ? Container.CustomDownloadUrl : BaseUrl / Container.UcasPath;
-			FString SavePath = SaveDir / Container.UcasPath;
-			AddDownloadTask(FullUrl, SavePath, Container.UcasSize, Container.UcasHash);
+			FString FullUrl = BaseUrl.IsEmpty() ? Container.CustomDownloadUrl : BaseUrl / Container.UcasFile.Path;
+			FString SavePath = SaveDir / Container.UcasFile.Path;
+			AddDownloadTask(FullUrl, SavePath, Container.UcasFile.Size, Container.UcasFile.Hash);
 		}
 	}
 	UE_LOG(LogHotUpdate, Log, TEXT("Added %d container download tasks"), Containers.Num());

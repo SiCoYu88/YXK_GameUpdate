@@ -30,7 +30,7 @@
 		 * -help           显示帮助信息
 		 */
 UCLASS()
-class UHotUpdateCommandlet : public UCommandlet
+class HOTUPDATEEDITOR_API UHotUpdateCommandlet : public UCommandlet
 {
 	GENERATED_BODY()
 
@@ -78,9 +78,6 @@ private:
 	EHotUpdateChunkStrategy PatchChunkStrategy;  // 非首包资源分包策略
 	int32 PatchChunkSizeMB;             // 分包大小（MB）
 
-	// 全量热更新参数
-	bool bIncludeBaseContainers;    // 是否包含基础版本容器
-	FString BaseContainerDir;       // 基础版本容器目录
 
 	// Android 纹理格式参数
 	FString TextureFormatStr;      // Android 纹理格式字符串

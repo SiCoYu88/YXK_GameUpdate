@@ -382,11 +382,10 @@ UHotUpdateDownloaderBase* UHotUpdateDownloaderBase::CreateDownloader(UObject* Ou
 
 #### Manifest 数据结构
 
-Manifest JSON 格式（版本 2）包含以下字段：
+Manifest JSON 格式包含以下字段：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `manifestVersion` | int32 | Manifest 版本号（当前为 2） |
 | `packageKind` | int32 | 包类型：0=基础包，1=热更包 |
 | `version` | object | 版本信息（version、platform、timestamp） |
 | `baseVersion` | string | 基础版本号（仅热更包有效） |

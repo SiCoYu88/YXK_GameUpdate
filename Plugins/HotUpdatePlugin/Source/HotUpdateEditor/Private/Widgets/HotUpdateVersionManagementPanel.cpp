@@ -2,7 +2,10 @@
 
 #include "Widgets/HotUpdateVersionManagementPanel.h"
 #include "HotUpdateVersionManager.h"
+#include "HotUpdateEditor.h"
 #include "HotUpdateNotificationHelper.h"
+#include "HAL/PlatformFileManager.h"
+#include "HAL/FileManager.h"
 #include "EditorStyleSet.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Misc/MessageDialog.h"
@@ -322,6 +325,9 @@ void SHotUpdateVersionManagementPanel::RefreshVersionList()
 		return;
 	}
 
+	// 强制从磁盘重新加载注册表
+	VersionManager.ReloadRegistry();
+
 	// 获取版本列表
 	TArray<FHotUpdateVersionSelectItem> Versions = VersionManager.GetSelectableVersions(*SelectedPlatform);
 
@@ -355,17 +361,23 @@ void SHotUpdateVersionManagementPanel::DeleteVersion(TSharedPtr<FHotUpdateVersio
 		return;
 	}
 
-	// 执行删除
+	// 获取版本目录路径
+	FString VersionDir = FHotUpdateVersionManager::GetVersionDir(VersionItem->VersionString, *SelectedPlatform);
+
+	// 执行删除注册表条目
 	bool bSuccess = VersionManager.UnregisterVersion(VersionItem->VersionString, *SelectedPlatform);
 
 	if (bSuccess)
 	{
+		// 删除版本文件夹
+		DeleteVersionDirectory(VersionDir, VersionItem->VersionString);
+
 		// 刷新列表
 		RefreshVersionList();
 
 		// 显示成功通知
 		FHotUpdateNotificationHelper::ShowNotification(
-			FText::FromString(FString::Printf(TEXT("版本 '%s' 已从注册表中移除"), *VersionItem->VersionString)),
+			FText::FromString(FString::Printf(TEXT("版本 '%s' 已删除"), *VersionItem->VersionString)),
 			SNotificationItem::CS_Success
 		);
 	}
@@ -378,10 +390,46 @@ void SHotUpdateVersionManagementPanel::DeleteVersion(TSharedPtr<FHotUpdateVersio
 	}
 }
 
+void SHotUpdateVersionManagementPanel::DeleteVersionDirectory(const FString& PlatformDir, const FString& VersionString)
+{
+	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
+
+	// 删除平台目录（如 Saved/HotUpdateVersions/1.0.0/Windows/）
+	if (PlatformFile.DirectoryExists(*PlatformDir))
+	{
+		if (PlatformFile.DeleteDirectoryRecursively(*PlatformDir))
+		{
+			UE_LOG(LogHotUpdateEditor, Log, TEXT("已删除版本目录: %s"), *PlatformDir);
+		}
+		else
+		{
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("删除版本目录失败: %s"), *PlatformDir);
+		}
+	}
+
+	// 检查版本目录是否为空，若为空则一并删除（如 Saved/HotUpdateVersions/1.0.0/）
+	FString VersionRootDir = FHotUpdateVersionManager::GetVersionRootDir() / VersionString;
+	if (PlatformFile.DirectoryExists(*VersionRootDir))
+	{
+		bool bIsEmpty = true;
+		IFileManager::Get().IterateDirectory(*VersionRootDir, [&bIsEmpty](const TCHAR*, bool) -> bool
+		{
+			bIsEmpty = false;
+			return false; // 找到第一个条目即停止
+		});
+
+		if (bIsEmpty)
+		{
+			PlatformFile.DeleteDirectory(*VersionRootDir);
+			UE_LOG(LogHotUpdateEditor, Log, TEXT("已删除空版本根目录: %s"), *VersionRootDir);
+		}
+	}
+}
+
 bool SHotUpdateVersionManagementPanel::ShowDeleteConfirmationDialog(const FString& VersionString)
 {
 	FText DialogText = FText::FromString(
-		FString::Printf(TEXT("确定要移除版本 '%s' 的注册吗？\n\n此操作仅移除注册表条目，不会删除实际文件。"),
+		FString::Printf(TEXT("确定要删除版本 '%s' 吗？\n\n此操作将移除注册表条目并删除版本文件夹，不可恢复。"),
 			*VersionString)
 	);
 

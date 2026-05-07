@@ -36,12 +36,6 @@ private:
 	/** 在 GameThread 将 uasset 磁盘路径反向解析为 UE 包名（供 Cook 使用） */
 	TArray<FString> ResolveUassetPathsForCook() const;
 
-	/** 将 uasset 磁盘路径反向解析为 UE 包名 */
-	static FString ResolveDiskPathToPackageName(const FString& DiskPath);
-
-	/** 确定非资产文件在 Pak 内的挂载路径 */
-	static FString DetermineNonAssetPakPath(const FString& DiskPath);
-
 	/** 后台线程执行的构建逻辑（不含 AssetRegistry 调用） */
 	FHotUpdateCustomPackageResult ExecuteBuild(const FHotUpdateCustomPackageConfig& Config, const TArray<FString>& AssetPathsToCook);
 

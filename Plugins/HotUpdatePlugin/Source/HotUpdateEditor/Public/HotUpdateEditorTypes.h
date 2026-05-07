@@ -226,19 +226,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisConfig
 	/// 按大小分包的详细配置
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk|Size")
 	FHotUpdateSizeBasedChunkConfig SizeBasedConfig;
-
-	/// 是否分析依赖关系
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	bool bAnalyzeDependencies;
-
-	/// 基础包 Chunk ID 起始值
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	int32 BaseChunkIdStart;
-
-	/// 更新包 Chunk ID 起始值
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	int32 PatchChunkIdStart;
-
+	
 	/// 未匹配任何规则的资源的默认 Chunk 名称
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
 	FString DefaultChunkName;
@@ -249,9 +237,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisConfig
 
 	FHotUpdateChunkAnalysisConfig()
 		: ChunkStrategy(EHotUpdateChunkStrategy::Size)
-		, bAnalyzeDependencies(true)
-		, BaseChunkIdStart(0)
-		, PatchChunkIdStart(10000)
 		, DefaultChunkName(TEXT("Default"))
 		, DefaultChunkId(-1)
 	{
@@ -273,14 +258,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateAssetFilterRule
 	/// 是否递归匹配子目录
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
 	bool bRecursive;
-
-	/// 资源类型过滤（空表示所有类型，如 "Texture2D", "Material", "StaticMesh"）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
-	TArray<FString> AssetTypes;
-
-	/// 规则描述
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
-	FString Description;
+	
 
 	FHotUpdateAssetFilterRule()
 		: bRecursive(true)
@@ -434,7 +412,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkDefinition
 	/// 包含的资源路径
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	TArray<FString> AssetPaths;
-	
+
 	/// 未压缩大小
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	int64 UncompressedSize;
@@ -488,7 +466,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 
 	/// 是否启用增量 Cook 模式
 	/// 启用后只 Cook 有变更的资源（基于 Diff 结果），而非全量 Cook
-	/// 使用 -PACKAGE + -cooksinglepackage 只 Cook 指定资源，大幅减少 Cook 时间
+	/// 使用 -PACKAGE 只 Cook 指定资源，大幅减少 Cook 时间
 	/// 需要先有上次 Cook 的输出文件作为 Diff 基准
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	bool bIncrementalCook;
@@ -506,19 +484,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "IoStore")
 	FHotUpdateIoStoreConfig IoStoreConfig;
 
-	/// === 全量热更新配置 ===
-
-	/// 是否包含基础版本容器（全量热更新模式）
-	/// 开启后，热更新包将包含基础版本的 Pak/IoStore 容器文件
-	/// 客户端可以直接从热更新包下载所有需要的资源，无需预先安装基础包
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
-	bool bIncludeBaseContainers;
-
-	/// 基础版本容器目录路径（全量热更新模式需要）
-	/// 指向基础版本的输出目录，包含 .utoc/.ucas 文件
-	/// 例如：Saved/HotUpdateVersions/1.0.0/Windows
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
-	FDirectoryPath BaseContainerDirectory;
 
 	/// 预收集的完整资源列表
 	TArray<FString> AssetPaths;
@@ -534,7 +499,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 		  , bSkipCook(false)
 		  , bIncrementalCook(false)
 		  , bSkipBuild(false)
-		  , bIncludeBaseContainers(false), bSynchronousMode(false)
+		  , bSynchronousMode(false)
 	{
 	}
 };
@@ -636,6 +601,38 @@ struct HOTUPDATEEDITOR_API FHotUpdateDiffReport
 };
 
 /**
+ * 基础版本 Manifest 数据（已按资产类型分类）
+ * 用于避免每次构建时筛选 .uasset/.umap
+ */
+struct HOTUPDATEEDITOR_API FHotUpdateBaseManifestData
+{
+	/// UE 资产 Hash 映射（仅 .uasset/.umap）
+	TMap<FString, FString> AssetHashes;
+
+	/// UE 资产大小映射
+	TMap<FString, int64> AssetSizes;
+
+	/// 非资产文件 Hash 映射
+	TMap<FString, FString> NonAssetHashes;
+
+	/// 非资产文件大小映射
+	TMap<FString, int64> NonAssetSizes;
+
+	FHotUpdateBaseManifestData()
+		: AssetHashes(), AssetSizes(), NonAssetHashes(), NonAssetSizes()
+	{}
+
+	/// 获取总资产数
+	int32 GetTotalAssetCount() const { return AssetHashes.Num(); }
+
+	/// 获取总非资产数
+	int32 GetTotalNonAssetCount() const { return NonAssetHashes.Num(); }
+
+	/// 是否有效
+	bool IsValid() const { return AssetHashes.Num() > 0 || NonAssetHashes.Num() > 0; }
+};
+
+/**
  * 更新包构建结果
  */
 USTRUCT(BlueprintType)
@@ -683,24 +680,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageResult
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	int64 PatchSize;
 
-	/// 是否需要基础包
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	bool bRequiresBasePackage;
-
-	/// === 全量热更新结果 ===
-
-	/// 是否包含基础版本容器
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	bool bIncludesBaseContainers;
-
-	/// 基础版本容器信息列表（全量热更新模式）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	TArray<FHotUpdateContainerInfo> BaseContainers;
-
-	/// 总下载大小（包含基础版本容器）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	int64 TotalDownloadSize;
-
+	
 	/// 错误信息
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	FString ErrorMessage;
@@ -709,9 +689,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageResult
 		: bSuccess(false)
 		, ChangedAssetCount(0)
 		, PatchSize(0)
-		, bRequiresBasePackage(true)
-		, bIncludesBaseContainers(false)
-		, TotalDownloadSize(0)
 	{
 	}
 };
@@ -827,10 +804,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateEditorVersionInfo
 	UPROPERTY(BlueprintReadOnly, Category = "Version")
 	int64 PackageSize;
 
-	/// 版本链（更新包的历史版本）
-	UPROPERTY(BlueprintReadOnly, Category = "Version")
-	TArray<FString> PatchChain;
-
 	FHotUpdateEditorVersionInfo()
 		: PackageKind(EHotUpdatePackageKind::Base)
 		, Platform(EHotUpdatePlatform::Windows)
@@ -855,6 +828,91 @@ enum class EHotUpdateAndroidTextureFormat : uint8
 // 打包进度委托（使用普通委托支持 Slate AddSP 绑定）
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPackageProgressDelegate, const FHotUpdatePackageProgress&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPatchPackageCompleteDelegate, const FHotUpdatePatchPackageResult&);
+
+// 基础版本构建委托
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildProgressDelegate, const FHotUpdateBaseVersionBuildProgress&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildCompleteDelegate, const FHotUpdateBaseVersionBuildResult&);
+
+/**
+ * 打包进度辅助函数
+ * 提供进度更新和广播的公共逻辑
+ */
+namespace HotUpdateProgressHelper
+{
+	/**
+	 * 更新进度数据
+	 * @param OutProgress 输出进度结构（会被更新）
+	 * @param Stage 当前阶段
+	 * @param CurrentFile 当前处理文件
+	 * @param ProcessedFiles 已处理文件数
+	 * @param TotalFiles 总文件数
+	 * @param ProcessedBytes 已处理字节数（可选）
+	 * @param TotalBytes 总字节数（可选）
+	 */
+	inline void UpdateProgressData(
+		FHotUpdatePackageProgress& OutProgress,
+		const FString& Stage,
+		const FString& CurrentFile,
+		int32 ProcessedFiles,
+		int32 TotalFiles,
+		int64 ProcessedBytes = 0,
+		int64 TotalBytes = 0)
+	{
+		OutProgress.CurrentStage = Stage;
+		OutProgress.CurrentFile = CurrentFile;
+		OutProgress.ProcessedFiles = ProcessedFiles;
+		OutProgress.TotalFiles = TotalFiles;
+		OutProgress.ProcessedBytes = ProcessedBytes;
+		OutProgress.TotalBytes = TotalBytes;
+		OutProgress.bIsComplete = (ProcessedFiles >= TotalFiles && TotalFiles > 0);
+		OutProgress.ProgressPercent = TotalFiles > 0 ? static_cast<float>(ProcessedFiles) / TotalFiles * 100.0f : 0.0f;
+		OutProgress.StageDescription = FText::FromString(Stage);
+	}
+
+	/**
+	 * 广播进度（同步模式）
+	 * @param Progress 进度数据
+	 * @param OnProgressDelegate 进度委托
+	 */
+	inline void BroadcastProgressSync(
+		const FHotUpdatePackageProgress& Progress,
+		FOnPackageProgressDelegate& OnProgressDelegate)
+	{
+		OnProgressDelegate.Broadcast(Progress);
+	}
+
+	/**
+	 * 广播进度（异步模式，在游戏线程执行）
+	 * 注意：此函数通过值捕获进度和委托，确保异步执行时数据安全
+	 * @param Progress 进度数据
+	 * @param OnProgressDelegate 进度委托引用
+	 */
+	inline void BroadcastProgressAsync(
+		const FHotUpdatePackageProgress& Progress,
+		FOnPackageProgressDelegate& OnProgressDelegate)
+	{
+		// 值捕获：避免异步执行时引用悬空
+		FOnPackageProgressDelegate DelegateCopy = OnProgressDelegate;
+		AsyncTask(ENamedThreads::GameThread, [DelegateCopy, Progress]()
+		{
+			DelegateCopy.Broadcast(Progress);
+		});
+	}
+
+	/**
+	 * 广播基础版本构建进度（异步模式，在游戏线程执行）
+	 */
+	inline void BroadcastBaseBuildProgressAsync(
+		const FHotUpdateBaseVersionBuildProgress& Progress,
+		FOnBaseVersionBuildProgressDelegate& OnProgressDelegate)
+	{
+		FOnBaseVersionBuildProgressDelegate DelegateCopy = OnProgressDelegate;
+		AsyncTask(ENamedThreads::GameThread, [DelegateCopy, Progress]()
+		{
+			DelegateCopy.Broadcast(Progress);
+		});
+	}
+}
 
 
 /**

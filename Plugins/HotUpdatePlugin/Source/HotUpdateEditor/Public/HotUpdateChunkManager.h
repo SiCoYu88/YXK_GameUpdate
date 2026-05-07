@@ -59,19 +59,7 @@ public:
 		const TMap<FString, FString>& AssetDiskPaths,
 		const FHotUpdateChunkAnalysisConfig& Config);
 
-	/**
-	 * 为更新包创建 Chunk 划分
-	 * @param ChangedAssets 变更的资源
-	 * @param AssetDiskPaths 资源磁盘路径映射
-	 * @param Config 分析配置
-	 * @return 分析结果
-	 */
-	static FHotUpdateChunkAnalysisResult CreatePatchChunks(
-		const TArray<FString>& ChangedAssets,
-		const TMap<FString, FString>& AssetDiskPaths,
-		const FHotUpdateChunkAnalysisConfig& Config);
-
-private:
+	private:
 	/**
 	 * 按大小划分（扩展版，支持详细配置）
 	 */
@@ -92,14 +80,6 @@ private:
 		int32 ChunkId,
 		TArray<FHotUpdateChunkDefinition>& OutChunks,
 		TMap<FString, int32>& OutAssetToChunk);
-
-	/**
-	 * 构建依赖关系
-	 */
-	static bool BuildDependencies(
-		TArray<FHotUpdateChunkDefinition>& Chunks,
-		const TMap<FString, int32>& AssetToChunk,
-		const IAssetRegistry* AssetRegistry);
 
 	/**
 	 * 获取资源文件大小

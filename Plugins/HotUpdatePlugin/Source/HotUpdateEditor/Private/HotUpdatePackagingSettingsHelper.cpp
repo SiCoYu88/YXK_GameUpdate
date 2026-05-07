@@ -80,9 +80,10 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 			FHotUpdateAssetFilter::GetDependencies(AssetPath, AssetRegistry, EHotUpdateDependencyStrategy::IncludeAll, AllPaths);
 		}
 
+		TSet<FString> ExistingPaths(Result.AssetPaths);
 		for (auto& Each : AllPaths)
 		{
-			if (!FHotUpdatePackageHelper::IsExternalAsset(Each))
+			if (!ExistingPaths.Contains(Each) && !FHotUpdatePackageHelper::IsExternalAsset(Each))
 			{
 				Result.AssetPaths.Add(Each);
 			}
@@ -210,23 +211,7 @@ void FHotUpdatePackagingSettingsHelper::FilterEditorContent(TArray<FString>& Ass
 
 FString FHotUpdatePackagingSettingsHelper::NormalizeAssetPath(const FString& Path)
 {
-	FString Result = Path;
-
-	// 去除前后空格
-	Result.TrimStartAndEndInline();
-
-	if (Result.IsEmpty())
-	{
-		return Result;
-	}
-
-	// 如果不以 / 开头，添加 /Game/ 前缀
-	if (!Result.StartsWith(TEXT("/")))
-	{
-		Result = TEXT("/Game/") + Result;
-	}
-
-	return Result;
+	return FHotUpdatePackageHelper::NormalizeAssetPath(Path);
 }
 
 bool FHotUpdatePackagingSettingsHelper::IsEditorContent(const FString& AssetPath)
@@ -301,10 +286,9 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FD
 
 	for (const FString& File : Visitor.FoundFiles)
 	{
-		// PakPath: /{ProjectName}/Content/Setting/txt_pak.txt（用于 filemanifest.json 的 filePath）
-		FString PakPath = File;
-		FPaths::MakePathRelativeTo(PakPath, *ContentDir);
-		PakPath = TEXT("/") + FString(FApp::GetProjectName()) / TEXT("Content") / PakPath;
-		OutStagedFiles.Add(File);
+		// 直接存储磁盘绝对路径，后续差异计算可直接使用
+		// manifest 生成阶段会调用 FilePathToContentMountPath 转换为虚拟路径
+		FString AbsolutePath = FPaths::ConvertRelativePathToFull(File);
+		OutStagedFiles.Add(AbsolutePath);
 	}
 }

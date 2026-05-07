@@ -208,10 +208,17 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 	FString& OutErrorMessage)
 {
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
-	FString ResponseContent;
 
-	OutValidFileCount = 0;
-	OutTotalSize = 0;
+		// 预估响应内容大小，预分配内存提升性能
+		// 每个资产条目约 200 字节（路径 + 压缩标记），配套文件可能增加 3 倍
+		constexpr int32 EstimatedBytesPerAsset = 200;
+		constexpr int32 EstimatedBytesPerCompanion = 60;
+		int32 EstimatedSize = AssetPaths.Num() * (EstimatedBytesPerAsset + EstimatedBytesPerCompanion * 3);
+		FString ResponseContent;
+		ResponseContent.Reserve(EstimatedSize);
+
+		OutValidFileCount = 0;
+		OutTotalSize = 0;
 
 	int32 TotalAssets = AssetPaths.Num();
 	UpdateProgress(TEXT("准备资源"), TEXT(""), 0, TotalAssets, 0, 0);
@@ -231,8 +238,9 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 			return false;
 		}
 
-		// 区分 UE 资产和 Non-asset 文件
-		bool bIsUAsset = FHotUpdatePackageHelper::IsUAsset(AssetPath);
+		// 使用 HotUpdatePackageHelper::IsUAssetFile 区分 UE 资产和 Non-asset 文件
+		bool bIsUAsset = FHotUpdatePackageHelper::IsUAssetFile(AssetPath);
+
 		FString DiskPath;
 
 		if (bIsUAsset && !CookedPlatformDir.IsEmpty())
@@ -247,8 +255,13 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 		}
 		else
 		{
-			// Non-asset 文件：直接从源目录获取（不需要 Cook）
-			DiskPath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+			// Non-asset 文件：将虚拟路径转换为绝对路径（使用 HotUpdatePackageHelper::VirtualPathToDiskPath）
+			DiskPath = FHotUpdatePackageHelper::VirtualPathToDiskPath(AssetPath);
+			if (DiskPath.IsEmpty())
+			{
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("非资产路径格式无法识别: %s"), *AssetPath);
+				continue;
+			}
 		}
 
 		if (DiskPath.IsEmpty() || !PlatformFile.FileExists(*DiskPath))
@@ -265,10 +278,10 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 		// 例如：/Game/Maps/Start -> ../../../GameUpdate/Content/Maps/Start.umap
 		if (bIsUAsset && !DiskPath.IsEmpty())
 		{
-			FString Extension = FPaths::GetExtension(DiskPath);
-			if (!Extension.IsEmpty() && !PakInternalPath.EndsWith(Extension))
+			FString DiskExtension = FPaths::GetExtension(DiskPath);
+			if (!DiskExtension.IsEmpty() && !PakInternalPath.EndsWith(DiskExtension))
 			{
-				PakInternalPath += TEXT(".") + Extension;
+				PakInternalPath += TEXT(".") + DiskExtension;
 			}
 		}
 
@@ -296,10 +309,14 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 			// 配套文件的基础名需要去掉主文件的扩展名
 			// 例如：Lvl_TopDown.umap -> Lvl_TopDown（配套文件是 Lvl_TopDown.uexp）
 			FString PakInternalBaseFilename = FPaths::GetBaseFilename(PakInternalPath);
-			// 如果 PakInternalBaseFilename 包含扩展名，去掉它
+			// 如果 PakInternalBaseFilename 包含扩展名（GetBaseFilename 只去除最后一个），去掉它
 			if (PakInternalBaseFilename.Contains(TEXT(".")))
 			{
-				PakInternalBaseFilename = FPaths::GetBaseFilename(BaseFilename);
+				int32 DotPos = PakInternalBaseFilename.Find(TEXT("."), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+				if (DotPos != INDEX_NONE)
+				{
+					PakInternalBaseFilename = PakInternalBaseFilename.Left(DotPos);
+				}
 			}
 
 			static const TArray<FString> CompanionExtensions = { TEXT("uexp"), TEXT("ubulk"), TEXT("ubulk2") };
